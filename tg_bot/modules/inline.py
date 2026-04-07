@@ -7,12 +7,13 @@ from typing import List
 from uuid import uuid4
 
 import requests
-from telegram import InlineQueryResultArticle, ParseMode, InputTextMessageContent, Update, InlineKeyboardMarkup, \
+from telegram import InlineQueryResultArticle, InputTextMessageContent, Update, InlineKeyboardMarkup, \
     InlineKeyboardButton
+from telegram.constants import ParseMode
 from telegram import __version__
 from telegram.error import BadRequest
-from telegram.ext import CallbackContext
-from telegram.utils.helpers import mention_html
+from telegram.ext import ContextTypes
+from telegram.helpers import mention_html
 
 import tg_bot.modules.sql.users_sql as sql
 from tg_bot import (
@@ -22,7 +23,6 @@ from tg_bot import (
     DEV_USERS,
     SARDEGNA_USERS,
     WHITELIST_USERS,
-    # sw,
     log
 )
 from tg_bot.modules.helper_funcs.misc import article
@@ -36,33 +36,21 @@ def remove_prefix(text, prefix):
 
 @kiginline()
 @rate_limit(40, 60)
-def inlinequery(update: Update, _) -> None:
-    """
-    Main InlineQueryHandler callback.
-    """
+async def inlinequery(update: Update, _) -> None:
     query = update.inline_query.query
     user = update.effective_user
 
     results: List = []
     inline_funcs = {
-        # ".spb": spb,
         ".info": inlineinfo,
         ".about": about,
         ".anilist": media_query,
     }
 
     if (f := query.split(" ", 1)[0]) in inline_funcs:
-        inline_funcs[f](remove_prefix(query, f).strip(), update, user)
+        await inline_funcs[f](remove_prefix(query, f).strip(), update, user)
     else:
         inline_help_dicts = [
-            # {
-            #    "title": "SpamProtection INFO",
-            #    "description": "Look up a person/bot/channel/chat on @Intellivoid SpamProtection API",
-            #    "message_text": "Click the button below to look up a person/bot/channel/chat on @Intellivoid SpamProtection API using "
-            #                    "username or telegram id",
-            #    "thumb_urL": "https://telegra.ph/file/3ce9045b1c7faf7123c67.jpg",
-            #    "keyboard": ".spb ",
-            #},
             {
                 "title": "Account info on Kigyo",
                 "description": "Look up a Telegram account in Kigyo database",
@@ -108,11 +96,10 @@ def inlinequery(update: Update, _) -> None:
                 )
             )
 
-        update.inline_query.answer(results, cache_time=5)
+        await update.inline_query.answer(results, cache_time=5)
 
 
-def inlineinfo(query: str, update: Update, context: CallbackContext) -> None:
-    """Handle the inline query."""
+async def inlineinfo(query: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot = context.bot
     query = update.inline_query.query
     log.info(query)
@@ -124,9 +111,9 @@ def inlineinfo(query: str, update: Update, context: CallbackContext) -> None:
         search = user_id
 
     try:
-        user = bot.get_chat(int(search))
+        user = await bot.get_chat(int(search))
     except (BadRequest, ValueError):
-        user = bot.get_chat(user_id)
+        user = await bot.get_chat(user_id)
 
     chat = update.effective_chat
     sql.update_user(user.id, user.username)
@@ -169,13 +156,6 @@ def inlineinfo(query: str, update: Update, context: CallbackContext) -> None:
     if nation_level_present:
         text += f' [<a href="https://t.me/{bot.username}?start=nations">?</a>]'
 
-    # with contextlib.suppress(Exception):
-    #     if spamwtc := sw.get_ban(int(user.id)):
-    #         text += "<b>\n\n• SpamWatched:\n</b> Yes"
-    #         text += f"\n• Reason: <pre>{spamwtc.reason}</pre>"
-    #         text += "\n• Appeal at @SpamWatchSupport"
-    #     else:
-    #         text += "<b>\n\n• SpamWatched:</b> No"
     num_chats = sql.get_user_num_chats(user.id)
     text += f"\n• <b>Chat count</b>: <code>{num_chats}</code>"
 
@@ -195,14 +175,13 @@ def inlineinfo(query: str, update: Update, context: CallbackContext) -> None:
         ),
     ]
 
-    update.inline_query.answer(results, cache_time=5)
+    await update.inline_query.answer(results, cache_time=5)
 
 
-def about(query: str, update: Update, context: CallbackContext) -> None:
-    """Handle the inline query."""
+async def about(query: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.inline_query.query
     user_id = update.effective_user.id
-    user = context.bot.get_chat(user_id)
+    user = await context.bot.get_chat(user_id)
     sql.update_user(user.id, user.username)
     about_text = f"""
     Kigyo (@{context.bot.username})
@@ -225,7 +204,7 @@ def about(query: str, update: Update, context: CallbackContext) -> None:
             reply_markup=kb
         )
     )
-    update.inline_query.answer(results)
+    await update.inline_query.answer(results)
 
 
 
@@ -265,11 +244,7 @@ MEDIA_QUERY = '''query ($search: String) {
 }'''
 
 
-def media_query(query: str, update: Update, context: CallbackContext) -> None:
-    # sourcery skip: avoid-builtin-shadow
-    """
-    Handle anime inline query.
-    """
+async def media_query(query: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     results: List = []
 
     try:
@@ -349,4 +324,4 @@ def media_query(query: str, update: Update, context: CallbackContext) -> None:
 
         results.append(InlineQueryResultArticle(id=str(uuid4()), title=f"Media {query} not found", input_message_content=InputTextMessageContent(f"Media {query} not found due to {e}", parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True), reply_markup=kb))
 
-    update.inline_query.answer(results, cache_time=5)
+    await update.inline_query.answer(results, cache_time=5)

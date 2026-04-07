@@ -1,8 +1,8 @@
 import html
 
 from telegram import Update
-from telegram.ext import CallbackContext
-from telegram.utils.helpers import mention_html
+from telegram.ext import ContextTypes
+from telegram.helpers import mention_html
 
 from tg_bot.modules.log_channel import loggable
 from tg_bot.modules.helper_funcs.decorators import kigcmd, rate_limit
@@ -11,11 +11,11 @@ import tg_bot.modules.sql.logger_sql as sql
 from ..modules.helper_funcs.anonymous import user_admin as u_admin, AdminPerms
 
 
-@kigcmd(command="announce", pass_args=True)
+@kigcmd(command="announce")
 @u_admin(AdminPerms.CAN_CHANGE_INFO)
 @rate_limit(40, 60)
 @loggable
-def announcestat(update: Update, context: CallbackContext) -> str:
+async def announcestat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
     args = context.args
     if len(args) > 0:
         u = update.effective_user
@@ -24,7 +24,7 @@ def announcestat(update: Update, context: CallbackContext) -> str:
         user = update.effective_user
         if args[0].lower() in ["on", "yes", "true"]:
             sql.enable_chat_log(update.effective_chat.id)
-            update.effective_message.reply_text(
+            await update.effective_message.reply_text(
                 "I've enabled announcemets in this group. Now any admin actions in your group will be announced."
             )
             logmsg = (
@@ -36,7 +36,7 @@ def announcestat(update: Update, context: CallbackContext) -> str:
             return logmsg
         elif args[0].lower() in ["off", "no", "false"]:
             sql.disable_chat_log(update.effective_chat.id)
-            update.effective_message.reply_text(
+            await update.effective_message.reply_text(
                 "I've disabled announcemets in this group. Now admin actions in your group will not be announced."
             )
             logmsg = (
@@ -47,7 +47,7 @@ def announcestat(update: Update, context: CallbackContext) -> str:
             )
             return logmsg
     else:
-        update.effective_message.reply_text(
+        await update.effective_message.reply_text(
             "Give me some arguments to choose a setting! on/off, yes/no!\n\n"
             "Your current setting is: {}\n"
             "When True, any admin actions in your group will be announced."

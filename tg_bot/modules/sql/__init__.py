@@ -1,3 +1,5 @@
+import asyncio
+import functools
 import time
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -5,9 +7,10 @@ from sqlalchemy.orm import sessionmaker, scoped_session, Query
 from sqlalchemy.exc import SQLAlchemyError
 from tg_bot import DB_URI, KInit, log
 
+
 class CachingQuery(Query):
     def __init__(self, *args, cache=None, **kwargs):
-        super().__init__(*args, ** kwargs)
+        super().__init__(*args, **kwargs)
         self.cache = cache or {}
 
     def __iter__(self):
@@ -26,10 +29,12 @@ class CachingQuery(Query):
         params = compiled.params
         return " ".join([str(compiled)] + [str(params[k]) for k in sorted(params)])
 
+
 def get_db_uri():
     if DB_URI and DB_URI.startswith("postgres://"):
         return DB_URI.replace("postgres://", "postgresql://", 1)
     return DB_URI
+
 
 def create_db_engine():
     return create_engine(
@@ -39,8 +44,9 @@ def create_db_engine():
         pool_size=KInit.POSTGRES_POOL_SIZE,
         max_overflow=KInit.POSTGRES_MAX_OVERFLOW,
         pool_timeout=KInit.POSTGRES_POOL_TIMEOUT,
-        pool_recycle=KInit.POSTGRES_POOL_RECYCLE
+        pool_recycle=KInit.POSTGRES_POOL_RECYCLE,
     )
+
 
 def start(max_retries=3, retry_delay=5):
     for attempt in range(max_retries):
@@ -60,6 +66,15 @@ def start(max_retries=3, retry_delay=5):
             else:
                 log.exception("[PostgreSQL] Failed to connect after maximum retries")
                 raise
+
+
+def run_sync(func):
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, functools.partial(func, *args, **kwargs))
+    return wrapper
+
 
 BASE = declarative_base()
 

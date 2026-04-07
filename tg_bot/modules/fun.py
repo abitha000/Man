@@ -1,13 +1,15 @@
 import html
 import json
 import random
+import asyncio
 import time
 import urllib.request
 import urllib.parse
 
 import telegram
-from telegram import ParseMode, Update, ChatPermissions
-from telegram.ext import CallbackContext
+from telegram.constants import ParseMode
+from telegram import Update, ChatPermissions
+from telegram.ext import ContextTypes
 
 import tg_bot.modules.fun_strings as fun_strings
 from tg_bot.modules.helper_funcs.chat_status import is_user_admin
@@ -17,13 +19,13 @@ from tg_bot.modules.helper_funcs.decorators import kigcmd, rate_limit
 
 @kigcmd(command='runs')
 @rate_limit(40, 60)
-def runs(update: Update, context: CallbackContext):
-    update.effective_message.reply_text(random.choice(fun_strings.RUN_STRINGS))
+async def runs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.effective_message.reply_text(random.choice(fun_strings.RUN_STRINGS))
 
 
 @kigcmd(command='slap')
 @rate_limit(40, 60)
-def slap(update: Update, context: CallbackContext):
+async def slap(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot: telegram.Bot = context.bot
     args = context.args
     message = update.effective_message
@@ -37,7 +39,7 @@ def slap(update: Update, context: CallbackContext):
 
     curr_user = html.escape(message.from_user.first_name) if not message.sender_chat else html.escape(
         message.sender_chat.title)
-    user_id = extract_user(message, args)
+    user_id = await extract_user(message, args)
 
     if user_id == bot.id:
         temp = random.choice(fun_strings.SLAP_Kigyō_TEMPLATES)
@@ -45,24 +47,24 @@ def slap(update: Update, context: CallbackContext):
         if isinstance(temp, list):
             if temp[2] == "tmute":
                 if is_user_admin(update, message.from_user.id):
-                    reply_text(temp[1])
+                    await reply_text(temp[1])
                     return
 
                 mutetime = int(time.time() + 60)
-                bot.restrict_chat_member(
+                await bot.restrict_chat_member(
                     chat.id,
                     message.from_user.id,
                     until_date=mutetime,
                     permissions=ChatPermissions(can_send_messages=False),
                 )
-            reply_text(temp[0])
+            await reply_text(temp[0])
         else:
-            reply_text(temp)
+            await reply_text(temp)
         return
 
     if user_id:
 
-        slapped_user = bot.get_chat(user_id)
+        slapped_user = await bot.get_chat(user_id)
         user1 = curr_user
         user2 = html.escape(slapped_user.first_name if slapped_user.first_name else slapped_user.title)
 
@@ -76,12 +78,12 @@ def slap(update: Update, context: CallbackContext):
     throw = random.choice(fun_strings.THROW)
     reply = temp.format(user1=user1, user2=user2, item=item, hits=hit, throws=throw)
 
-    reply_text(reply, parse_mode=ParseMode.HTML)
+    await reply_text(reply, parse_mode=ParseMode.HTML)
 
 
 @kigcmd(command='pat')
 @rate_limit(40, 60)
-def pat(update: Update, context: CallbackContext):
+async def pat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     msg = str(update.message.text)
     try:
@@ -108,13 +110,13 @@ def pat(update: Update, context: CallbackContext):
             .decode("utf-8")
     )
     if "@" in msg and len(msg) > 5:
-        context.bot.send_photo(
+        await context.bot.send_photo(
             chat_id,
             f"https://headp.at/pats/{urllib.parse.quote(random.choice(pats))}",
             caption=msg,
         )
     else:
-        context.bot.send_photo(
+        await context.bot.send_photo(
             chat_id,
             f"https://headp.at/pats/{urllib.parse.quote(random.choice(pats))}",
             reply_to_message_id=msg_id,
@@ -123,29 +125,29 @@ def pat(update: Update, context: CallbackContext):
 
 @kigcmd(command='roll')
 @rate_limit(40, 60)
-def roll(update: Update, context: CallbackContext):
-    update.message.reply_text(random.choice(range(1, 7)))
+async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(random.choice(range(1, 7)))
 
 
 @kigcmd(command='toss')
 @rate_limit(40, 60)
-def toss(update: Update, context: CallbackContext):
-    update.message.reply_text(random.choice(fun_strings.TOSS))
+async def toss(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(random.choice(fun_strings.TOSS))
 
 
 @kigcmd(command='shrug')
 @rate_limit(40, 60)
-def shrug(update: Update, context: CallbackContext):
+async def shrug(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     reply_text = (
         msg.reply_to_message.reply_text if msg.reply_to_message else msg.reply_text
     )
-    reply_text(r"¯\_(ツ)_/¯")
+    await reply_text(r"¯\_(ツ)_/¯")
 
 
 @kigcmd(command='rlg')
 @rate_limit(40, 60)
-def rlg(update: Update, context: CallbackContext):
+async def rlg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     eyes = random.choice(fun_strings.EYES)
     mouth = random.choice(fun_strings.MOUTHS)
     ears = random.choice(fun_strings.EARS)
@@ -154,29 +156,29 @@ def rlg(update: Update, context: CallbackContext):
         repl = ears[0] + eyes[0] + mouth[0] + eyes[1] + ears[1]
     else:
         repl = ears[0] + eyes[0] + mouth[0] + eyes[0] + ears[1]
-    update.message.reply_text(repl)
+    await update.message.reply_text(repl)
 
 
 @kigcmd(command='decide')
 @rate_limit(40, 60)
-def decide(update: Update, context: CallbackContext):
+async def decide(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_text = (
         update.effective_message.reply_to_message.reply_text
         if update.effective_message.reply_to_message
         else update.effective_message.reply_text
     )
-    reply_text(random.choice(fun_strings.DECIDE))
+    await reply_text(random.choice(fun_strings.DECIDE))
 
 
 @kigcmd(command='table')
 @rate_limit(40, 60)
-def table(update: Update, context: CallbackContext):
+async def table(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_text = (
         update.effective_message.reply_to_message.reply_text
         if update.effective_message.reply_to_message
         else update.effective_message.reply_text
     )
-    reply_text(random.choice(fun_strings.TABLE))
+    await reply_text(random.choice(fun_strings.TABLE))
 
 
 from tg_bot.modules.language import gs

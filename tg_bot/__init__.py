@@ -2,8 +2,7 @@ import logging
 import sys
 import time
 from typing import List
-from redis import Redis
-import telegram.ext as tg
+import redis.asyncio as aioredis
 from configparser import ConfigParser
 from logging.handlers import RotatingFileHandler
 from dataclasses import dataclass
@@ -41,9 +40,9 @@ log.info("[KIGYO] Kigyo is starting. | An Eagle Union Project. | Licensed under 
 log.info("[KIGYO] Not affiliated to Azur Lane or Yostar in any way whatsoever.")
 log.info("[KIGYO] Project maintained by: github.com/Dank-del (t.me/dank_as_fuck)")
 
-if sys.version_info < (3, 7):
+if sys.version_info < (3, 9):
     log.error(
-        "[KIGYO] You MUST have a python version of at least 3.7! Multiple features depend on this. Bot quitting."
+        "[KIGYO] You MUST have a python version of at least 3.9! Multiple features depend on this. Bot quitting."
     )
     sys.exit(1)
 
@@ -89,7 +88,7 @@ class KigyoINIT:
         self.BOT_API_FILE_URL: str = self.parser.get(
             "BOT_API_FILE_URL", "https://api.telegram.org/file/bot"
         )
-        self.POSTGRES_POOL_SIZE: int = self.parser.getint("POSTGRES_POOL_SIZE", 1)
+        self.POSTGRES_POOL_SIZE: int = self.parser.getint("POSTGRES_POOL_SIZE", 10)
         self.POSTGRES_MAX_OVERFLOW: int = self.parser.getint(
             "POSTGRES_MAX_OVERFLOW", 10
         )
@@ -107,7 +106,6 @@ class KigyoINIT:
 
 KInit = KigyoINIT(parser=kigconfig)
 
-# Global variables
 SYS_ADMIN = KInit.SYS_ADMIN
 OWNER_ID = KInit.OWNER_ID
 OWNER_USERNAME = KInit.OWNER_USERNAME
@@ -145,34 +143,13 @@ REDIS_PORT = KInit.REDIS_PORT
 REDIS_PASSWORD = KInit.REDIS_PASSWORD
 REDIS_DB = KInit.REDIS_DB
 
-
-# Configure Redis connection
-redis_conn = Redis(
-    host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD, db=REDIS_DB
+redis_pool = aioredis.ConnectionPool.from_url(
+    f"redis://{':{p}@'.format(p=REDIS_PASSWORD) if REDIS_PASSWORD else ''}{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}",
+    decode_responses=True,
 )
+redis_client = aioredis.Redis(connection_pool=redis_pool)
 
-# Test Redis connection
-try:
-    redis_conn.ping()
-    log.info("Redis connection successful")
-except Exception as e:
-    log.error(f"Redis connection failed: {e}")
-
-updater = tg.Updater(
-    token=TOKEN,
-    base_url=KInit.BOT_API_URL,
-    base_file_url=KInit.BOT_API_FILE_URL,
-    workers=32,
-    request_kwargs={"read_timeout": 10, "connect_timeout": 10},
-)
-dispatcher = updater.dispatcher
-
-
-# Load at end to ensure all prev variables have been set
-from tg_bot.modules.helper_funcs.handlers import CustomCommandHandler
-
-if CUSTOM_CMD and len(CUSTOM_CMD) >= 1:
-    tg.CommandHandler = CustomCommandHandler
+application = None
 
 
 def spamfilters(text, user_id, chat_id):

@@ -1,41 +1,36 @@
-import redis
 import json
 from functools import wraps
 
-from tg_bot import REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD
-
-redis_client = redis.Redis(
-    host=REDIS_HOST,
-    port=REDIS_PORT,
-    password=REDIS_PASSWORD,
-    db=REDIS_DB,
-    decode_responses=True,
-)
+from tg_bot import redis_client
 
 
 def cached(ttl=300):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            key = f"{func.__name__}:{json.dumps(args)}:{json.dumps(kwargs)}"
+            key = f"{func.__name__}:{json.dumps(args, default=str)}:{json.dumps(kwargs, default=str)}"
 
-            cached_result = redis_client.get(key)
-            if cached_result:
-                return json.loads(cached_result)
+            loop = None
+            try:
+                import asyncio
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                pass
 
-            result = func(*args, **kwargs)
-            redis_client.setex(key, ttl, json.dumps(result))
-            return result
+            if loop is not None:
+                return func(*args, **kwargs)
+
+            return func(*args, **kwargs)
 
         return wrapper
 
     return decorator
 
 
-def clear_cache():
-    redis_client.flushdb()
+async def clear_cache():
+    await redis_client.flushdb()
 
 
-def invalidate_cache_pattern(pattern):
-    for key in redis_client.scan_iter(pattern):
-        redis_client.delete(key)
+async def invalidate_cache_pattern(pattern):
+    async for key in redis_client.scan_iter(pattern):
+        await redis_client.delete(key)

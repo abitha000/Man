@@ -10,20 +10,21 @@ __mod_name__ = "Translator"
 
 trans = SyncTranslator()
 
-from telegram import ParseMode, Update
-from telegram.ext import CallbackContext
+from telegram import Update
+from telegram.constants import ParseMode
+from telegram.ext import ContextTypes
 from tg_bot.modules.helper_funcs.decorators import kigcmd, rate_limit
 
 
 @kigcmd(command=["tr", "tl"])
 @rate_limit(40, 60)
-def translate(update: Update, context: CallbackContext) -> None:
+async def translate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global to_translate
     bot = context.bot
     message = update.effective_message
     reply_msg = message.reply_to_message
     if not reply_msg:
-        message.reply_text("Reply to a message to translate it!")
+        await message.reply_text("Reply to a message to translate it!")
         return
     if reply_msg.caption:
         to_translate = reply_msg.caption
@@ -45,15 +46,15 @@ def translate(update: Update, context: CallbackContext) -> None:
     reply = f"<b>Translated from {source} to {dest}</b>:\n" \
             f"<code>{translation.text}</code>"
 
-    bot.send_message(text=reply, chat_id=message.chat.id, parse_mode=ParseMode.HTML)
+    await bot.send_message(text=reply, chat_id=message.chat.id, parse_mode=ParseMode.HTML)
 
 
 @kigcmd(command='langs')
 @rate_limit(40, 60)
-def languages(update: Update, context: CallbackContext) -> None:
+async def languages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     bot = context.bot
-    bot.send_message(
+    await bot.send_message(
         text="Click [here](https://cloud.google.com/translate/docs/languages) to see the list of supported language "
              "codes!",
         chat_id=message.chat.id, disable_web_page_preview=True, parse_mode=ParseMode.MARKDOWN)

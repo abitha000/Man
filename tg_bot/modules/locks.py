@@ -2,14 +2,16 @@ import ast
 import html
 
 from alphabet_detector import AlphabetDetector
-from telegram import Message, Chat, ParseMode, MessageEntity, Update
+from telegram import Message, Chat, MessageEntity, Update
 from telegram import TelegramError, ChatPermissions
+from telegram.constants import ParseMode
 from telegram.error import BadRequest
-from telegram.ext import Filters, CallbackContext
-from telegram.utils.helpers import mention_html
+from telegram.ext import filters, ContextTypes
+from telegram.helpers import mention_html
 from typing import Optional
 import tg_bot.modules.sql.locks_sql as sql
-from tg_bot import dispatcher, log
+import tg_bot
+from tg_bot import log
 from tg_bot.modules.connection import connected
 from tg_bot.modules.helper_funcs.alternate import send_message, typing_action
 from tg_bot.modules.helper_funcs.chat_status import (
@@ -26,18 +28,18 @@ from ..modules.helper_funcs.anonymous import user_admin, AdminPerms
 ad = AlphabetDetector()
 
 LOCK_TYPES = {
-    "audio": Filters.audio,
-    "voice": Filters.voice,
-    "document": Filters.document,
-    "video": Filters.video,
-    "contact": Filters.contact,
-    "photo": Filters.photo,
-    "url": Filters.entity(MessageEntity.URL) | Filters.caption_entity(MessageEntity.URL),
-    "bots": Filters.status_update.new_chat_members,
-    "forward": Filters.forwarded & ~ Filters.is_automatic_forward,
-    "game": Filters.game,
-    "location": Filters.location,
-    "egame": Filters.dice,
+    "audio": filters.AUDIO,
+    "voice": filters.VOICE,
+    "document": filters.Document.ALL,
+    "video": filters.VIDEO,
+    "contact": filters.CONTACT,
+    "photo": filters.PHOTO,
+    "url": filters.Entity(MessageEntity.URL) | filters.CaptionEntity(MessageEntity.URL),
+    "bots": filters.StatusUpdate.NEW_CHAT_MEMBERS,
+    "forward": filters.FORWARDED & ~ filters.IS_AUTOMATIC_FORWARD,
+    "game": filters.GAME,
+    "location": filters.LOCATION,
+    "egame": filters.Dice.ALL,
     "rtl": "rtl",
     "button": "button",
     "inline": "inline",
@@ -91,13 +93,12 @@ PERM_GROUP = -8
 REST_GROUP = -12
 
 
-# NOT ASYNC
-def restr_members(
+async def restr_members(
         bot, chat_id, members, messages=False, media=False, other=False, previews=False
 ):
     for mem in members:
         try:
-            bot.restrict_chat_member(
+            await bot.restrict_chat_member(
                 chat_id,
                 mem.user,
                 can_send_messages=messages,
@@ -109,13 +110,12 @@ def restr_members(
             pass
 
 
-# NOT ASYNC
-def unrestr_members(
+async def unrestr_members(
         bot, chat_id, members, messages=True, media=True, other=True, previews=True
 ):
     for mem in members:
         try:
-            bot.restrict_chat_member(
+            await bot.restrict_chat_member(
                 chat_id,
                 mem.user,
                 can_send_messages=messages,
@@ -129,8 +129,8 @@ def unrestr_members(
 
 @kigcmd(command='locktypes')
 @rate_limit(40, 60)
-def locktypes(update, _):
-    update.effective_message.reply_text(
+async def locktypes(update: Update, _: ContextTypes.DEFAULT_TYPE):
+    await update.effective_message.reply_text(
         "\n • ".join(
             ["Locks available: "]
             + sorted(list(LOCK_TYPES) + list(LOCK_CHAT_RESTRICTION))
@@ -138,12 +138,12 @@ def locktypes(update, _):
     )
 
 
-@kigcmd(command='lock', pass_args=True)
+@kigcmd(command='lock')
 @user_admin(AdminPerms.CAN_CHANGE_INFO)
 @rate_limit(40, 60)
 @loggable
 @typing_action
-def lock(update: Update, context: CallbackContext) -> str:  # sourcery no-metrics
+async def lock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
     args = context.args
     chat = update.effective_chat
     user = update.effective_user
@@ -155,26 +155,22 @@ def lock(update: Update, context: CallbackContext) -> str:  # sourcery no-metric
         if len(args) >= 1:
             ltype = args[0].lower()
             if ltype in LOCK_TYPES:
-                # Connection check
                 conn = connected(context.bot, update, chat, user.id, need_admin=True)
                 if conn:
-                    chat = dispatcher.bot.getChat(conn)
-                    # chat_id = conn
+                    chat = await context.bot.get_chat(conn)
                     chat_name = chat.title
                     text = "Locked {} for non-admins in {}!".format(ltype, chat_name)
                 else:
                     if update.effective_message.chat.type == "private":
-                        send_message(
+                        await send_message(
                             update.effective_message,
                             "This command is meant to use in group not in PM",
                         )
                         return ""
                     chat = update.effective_chat
-                    # chat_id = update.effective_chat.id
-                    # chat_name = update.effective_message.chat.title
                     text = "Locked {} for non-admins!".format(ltype)
                 sql.update_lock(chat.id, ltype, locked=True)
-                send_message(update.effective_message, text, parse_mode="markdown")
+                await send_message(update.effective_message, text, parse_mode="markdown")
 
                 return (
                     "<b>{}:</b>"
@@ -188,10 +184,9 @@ def lock(update: Update, context: CallbackContext) -> str:  # sourcery no-metric
                 )
 
             elif ltype in LOCK_CHAT_RESTRICTION:
-                # Connection check
                 conn = connected(context.bot, update, chat, user.id, need_admin=True)
                 if conn:
-                    chat = dispatcher.bot.getChat(conn)
+                    chat = await context.bot.get_chat(conn)
                     chat_id = conn
                     chat_name = chat.title
                     text = "Locked {} for all non-admins in {}!".format(
@@ -199,18 +194,17 @@ def lock(update: Update, context: CallbackContext) -> str:  # sourcery no-metric
                     )
                 else:
                     if update.effective_message.chat.type == "private":
-                        send_message(
+                        await send_message(
                             update.effective_message,
                             "This command is meant to use in group not in PM",
                         )
                         return ""
                     chat = update.effective_chat
                     chat_id = update.effective_chat.id
-                    # chat_name = update.effective_message.chat.title
                     text = "Locked {} for all non-admins!".format(ltype)
 
-                current_permission = context.bot.getChat(chat_id).permissions
-                context.bot.set_chat_permissions(
+                current_permission = (await context.bot.get_chat(chat_id)).permissions
+                await context.bot.set_chat_permissions(
                     chat_id=chat_id,
                     permissions=get_permission_list(
                         ast.literal_eval(str(current_permission)),
@@ -218,7 +212,7 @@ def lock(update: Update, context: CallbackContext) -> str:  # sourcery no-metric
                     ),
                 )
 
-                send_message(update.effective_message, text, parse_mode="markdown")
+                await send_message(update.effective_message, text, parse_mode="markdown")
                 return (
                     "<b>{}:</b>"
                     "\n#Permission_LOCK"
@@ -231,15 +225,15 @@ def lock(update: Update, context: CallbackContext) -> str:  # sourcery no-metric
                 )
 
             else:
-                send_message(
+                await send_message(
                     update.effective_message,
                     "What are you trying to lock...? Try /locktypes for the list of lockables",
                 )
         else:
-            send_message(update.effective_message, "What are you trying to lock...?")
+            await send_message(update.effective_message, "What are you trying to lock...?")
 
     else:
-        send_message(
+        await send_message(
             update.effective_message,
             "I am not administrator or haven't got enough rights.",
         )
@@ -247,39 +241,34 @@ def lock(update: Update, context: CallbackContext) -> str:  # sourcery no-metric
     return ""
 
 
-@kigcmd(command='unlock', pass_args=True)
+@kigcmd(command='unlock')
 @user_admin(AdminPerms.CAN_CHANGE_INFO)
 @rate_limit(40, 60)
 @loggable
 @typing_action
-def unlock(update: Update, context: CallbackContext) -> str:  # sourcery no-metrics
+async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
     args = context.args
     chat = update.effective_chat
     user = update.effective_user
-    # message = update.effective_message
     if len(args) >= 1:
         ltype = args[0].lower()
         if ltype in LOCK_TYPES:
-            # Connection check
             conn = connected(context.bot, update, chat, user.id, need_admin=True)
             if conn:
-                chat = context.bot.getChat(conn)
-                # chat_id = conn
+                chat = await context.bot.get_chat(conn)
                 chat_name = chat.title
                 text = "Unlocked {} for everyone in {}!".format(ltype, chat_name)
             else:
                 if update.effective_message.chat.type == "private":
-                    send_message(
+                    await send_message(
                         update.effective_message,
                         "This command is meant to use in group not in PM",
                     )
                     return ""
                 chat = update.effective_chat
-                # chat_id = update.effective_chat.id
-                # chat_name = update.effective_message.chat.title
                 text = "Unlocked {} for everyone!".format(ltype)
             sql.update_lock(chat.id, ltype, locked=False)
-            send_message(update.effective_message, text, parse_mode="markdown")
+            await send_message(update.effective_message, text, parse_mode="markdown")
             return (
                 "<b>{}:</b>"
                 "\n#UNLOCK"
@@ -292,27 +281,25 @@ def unlock(update: Update, context: CallbackContext) -> str:  # sourcery no-metr
             )
 
         elif ltype in UNLOCK_CHAT_RESTRICTION:
-            # Connection check
             conn = connected(context.bot, update, chat, user.id, need_admin=True)
             if conn:
-                chat = dispatcher.bot.getChat(conn)
+                chat = await context.bot.get_chat(conn)
                 chat_id = conn
                 chat_name = chat.title
                 text = "Unlocked {} for everyone in {}!".format(ltype, chat_name)
             else:
                 if update.effective_message.chat.type == "private":
-                    send_message(
+                    await send_message(
                         update.effective_message,
                         "This command is meant to use in group not in PM",
                     )
                     return ""
                 chat = update.effective_chat
                 chat_id = update.effective_chat.id
-                # chat_name = update.effective_message.chat.title
                 text = "Unlocked {} for everyone!".format(ltype)
 
-            current_permission = context.bot.getChat(chat_id).permissions
-            context.bot.set_chat_permissions(
+            current_permission = (await context.bot.get_chat(chat_id)).permissions
+            await context.bot.set_chat_permissions(
                 chat_id=chat_id,
                 permissions=get_permission_list(
                     ast.literal_eval(str(current_permission)),
@@ -320,7 +307,7 @@ def unlock(update: Update, context: CallbackContext) -> str:  # sourcery no-metr
                 ),
             )
 
-            send_message(update.effective_message, text, parse_mode="markdown")
+            await send_message(update.effective_message, text, parse_mode="markdown")
 
             return (
                 "<b>{}:</b>"
@@ -333,23 +320,23 @@ def unlock(update: Update, context: CallbackContext) -> str:  # sourcery no-metr
                 )
             )
         else:
-            send_message(
+            await send_message(
                 update.effective_message,
                 "What are you trying to unlock...? Try /locktypes for the list of lockables.",
             )
 
     else:
-        send_message(update.effective_message, "What are you trying to unlock...?")
+        await send_message(update.effective_message, "What are you trying to unlock...?")
 
     return ""
 
 
-@kigmsg((Filters.all & Filters.chat_type.groups), group=PERM_GROUP)
+@kigmsg((filters.ALL & filters.ChatType.GROUPS), group=PERM_GROUP)
 @user_not_admin
 @rate_limit(50, 60)
-def del_lockables(update, context):  # sourcery no-metrics
-    chat = update.effective_chat  # type: Optional[Chat]
-    message = update.effective_message  # type: Optional[Message]
+async def del_lockables(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    message = update.effective_message
     user = update.effective_user
     if is_approved(chat.id, user.id):
         return
@@ -360,7 +347,7 @@ def del_lockables(update, context):  # sourcery no-metrics
                     check = ad.detect_alphabet(u"{}".format(message.caption))
                     if "ARABIC" in check:
                         try:
-                            message.delete()
+                            await message.delete()
                         except BadRequest as excp:
                             if excp.message != "Message to delete not found":
                                 log.exception("ERROR in lockables")
@@ -369,7 +356,7 @@ def del_lockables(update, context):  # sourcery no-metrics
                     check = ad.detect_alphabet(u"{}".format(message.text))
                     if "ARABIC" in check:
                         try:
-                            message.delete()
+                            await message.delete()
                         except BadRequest as excp:
                             if excp.message != "Message to delete not found":
                                 log.exception("ERROR in lockables")
@@ -383,7 +370,7 @@ def del_lockables(update, context):  # sourcery no-metrics
                     and message.reply_markup.inline_keyboard
             ):
                 try:
-                    message.delete()
+                    await message.delete()
                 except BadRequest as excp:
                     if excp.message != "Message to delete not found":
                         log.exception("ERROR in lockables")
@@ -397,7 +384,7 @@ def del_lockables(update, context):  # sourcery no-metrics
                     and message.via_bot
             ):
                 try:
-                    message.delete()
+                    await message.delete()
                 except BadRequest as excp:
                     if excp.message != "Message to delete not found":
                         log.exception("ERROR in lockables")
@@ -413,22 +400,22 @@ def del_lockables(update, context):  # sourcery no-metrics
                 for new_mem in new_members:
                     if new_mem.is_bot:
                         if not is_bot_admin(chat, context.bot.id):
-                            send_message(
+                            await send_message(
                                 update.effective_message,
                                 "I see a bot and I've been told to stop them from joining..."
                                 "but I'm not admin!",
                             )
                             return
 
-                        chat.ban_member(new_mem.id)
-                        send_message(
+                        await chat.ban_member(new_mem.id)
+                        await send_message(
                             update.effective_message,
                             "Only admins are allowed to add bots in this chat! Get outta here.",
                         )
                         break
             else:
                 try:
-                    message.delete()
+                    await message.delete()
                 except BadRequest as excp:
                     if excp.message != "Message to delete not found":
                         log.exception("ERROR in lockables")
@@ -436,7 +423,7 @@ def del_lockables(update, context):  # sourcery no-metrics
                 break
 
 
-def build_lock_message(chat_id):
+async def build_lock_message(chat_id):
     locks = sql.get_locks(chat_id)
     res = ""
     locklist = []
@@ -460,7 +447,7 @@ def build_lock_message(chat_id):
         locklist.append("button = `{}`".format(locks.button))
         locklist.append("egame = `{}`".format(locks.egame))
         locklist.append("inline = `{}`".format(locks.inline))
-    permissions = dispatcher.bot.get_chat(chat_id).permissions
+    permissions = (await tg_bot.application.bot.get_chat(chat_id)).permissions
     permslist.append("messages = `{}`".format(permissions.can_send_messages))
     permslist.append("media = `{}`".format(permissions.can_send_media_messages))
     permslist.append("poll = `{}`".format(permissions.can_send_polls))
@@ -471,9 +458,7 @@ def build_lock_message(chat_id):
     permslist.append("pin = `{}`".format(permissions.can_pin_messages))
 
     if locklist:
-        # Ordering lock list
         locklist.sort()
-        # Building lock list string
         for x in locklist:
             res += "\n • {}".format(x)
     res += "\n\n*" + "These are the current chat permissions:" + "*"
@@ -486,18 +471,17 @@ def build_lock_message(chat_id):
 @u_admin
 @typing_action
 @rate_limit(40, 60)
-def list_locks(update, context):
-    chat = update.effective_chat  # type: Optional[Chat]
+async def list_locks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
     user = update.effective_user
 
-    # Connection check
     conn = connected(context.bot, update, chat, user.id, need_admin=True)
     if conn:
-        chat = dispatcher.bot.getChat(conn)
+        chat = await context.bot.get_chat(conn)
         chat_name = chat.title
     else:
         if update.effective_message.chat.type == "private":
-            send_message(
+            await send_message(
                 update.effective_message,
                 "This command is meant to use in group not in PM",
             )
@@ -505,11 +489,11 @@ def list_locks(update, context):
         chat = update.effective_chat
         chat_name = update.effective_message.chat.title
 
-    res = build_lock_message(chat.id)
+    res = await build_lock_message(chat.id)
     if conn:
         res = res.replace("Locks in", "*{}*".format(chat_name))
 
-    send_message(update.effective_message, res, parse_mode=ParseMode.MARKDOWN)
+    await send_message(update.effective_message, res, parse_mode=ParseMode.MARKDOWN)
 
 
 def get_permission_list(current, new):
@@ -529,7 +513,6 @@ def get_permission_list(current, new):
 
 
 def __import_data__(chat_id, data):
-    # set chat locks
     locks = data.get("locks", {})
     for itemlock in locks:
         if itemlock in LOCK_TYPES:

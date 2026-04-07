@@ -1,13 +1,14 @@
 from typing import Union, List, Dict, Callable, Generator, Any
 import itertools
 from collections.abc import Iterable
-from telegram.ext import CommandHandler, CallbackQueryHandler
+from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 
-from tg_bot import dispatcher
+import tg_bot
 import tg_bot.modules.sql.language_sql as sql
 from tg_bot.modules.helper_funcs.chat_status import user_admin, user_admin_no_reply
 from tg_bot.langs import get_string, get_languages, get_language
+from tg_bot.modules.helper_funcs.decorators import kigyo_handler
 
 
 
@@ -31,7 +32,7 @@ def gs(chat_id: Union[int, str], string: str) -> str:
 
 
 @user_admin
-def set_lang(update: Update, _) -> None:
+async def set_lang(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     chat = update.effective_chat
     msg = update.effective_message
 
@@ -52,19 +53,19 @@ def set_lang(update: Update, _) -> None:
             )
         ]
     )
-    msg.reply_text(msg_text, reply_markup=InlineKeyboardMarkup(keyb))
+    await msg.reply_text(msg_text, reply_markup=InlineKeyboardMarkup(keyb))
 
 
 @user_admin_no_reply
-def lang_button(update: Update, _) -> None:
+async def lang_button(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     chat = update.effective_chat
 
-    query.answer()
+    await query.answer()
     lang = query.data.split("_")[1]
     sql.set_lang(chat.id, lang)
 
-    query.message.edit_text(
+    await query.message.edit_text(
         gs(chat.id, "set_chat_lang").format(get_language(lang)[:-3])
     )
 
@@ -72,5 +73,5 @@ def lang_button(update: Update, _) -> None:
 SETLANG_HANDLER = CommandHandler("language", set_lang)
 SETLANG_BUTTON_HANDLER = CallbackQueryHandler(lang_button, pattern=r"setLang_")
 
-dispatcher.add_handler(SETLANG_HANDLER)
-dispatcher.add_handler(SETLANG_BUTTON_HANDLER)
+kigyo_handler._add_handler(SETLANG_HANDLER)
+kigyo_handler._add_handler(SETLANG_BUTTON_HANDLER)

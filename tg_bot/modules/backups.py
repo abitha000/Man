@@ -1,23 +1,22 @@
 import json, time, os
 from io import BytesIO
-from telegram import ParseMode, Message
+from telegram.constants import ParseMode
+from telegram import Message, Update
 from telegram.error import BadRequest
 import tg_bot.modules.sql.notes_sql as sql
-from tg_bot import dispatcher, log as LOGGER, OWNER_ID
+import tg_bot
+from tg_bot import log as LOGGER, OWNER_ID
 from tg_bot.__main__ import DATA_IMPORT
 from tg_bot.modules.helper_funcs.alternate import typing_action
 from tg_bot.modules.helper_funcs.decorators import kigcmd, rate_limit
-# from tg_bot.modules.rules import get_rules
 import tg_bot.modules.sql.rules_sql as rulessql
 from tg_bot.modules.language import gs
-# from tg_bot.modules.sql import warns_sql as warnssql
 import tg_bot.modules.sql.blacklist_sql as blacklistsql
 from tg_bot.modules.sql import disable_sql as disabledsql
 
-# from tg_bot.modules.sql import cust_filters_sql as filtersql
-# import tg_bot.modules.sql.welcome_sql as welcsql
 import tg_bot.modules.sql.locks_sql as locksql
 from tg_bot.modules.connection import connected
+from telegram.ext import ContextTypes
 
 from ..modules.helper_funcs.anonymous import user_admin, AdminPerms
 
@@ -30,20 +29,18 @@ __mod_name__ = "Backup"
 @user_admin(AdminPerms.CAN_CHANGE_INFO)
 @typing_action
 @rate_limit(40, 60)
-def import_data(update, context):
+async def import_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     chat = update.effective_chat
     user = update.effective_user
-    # TODO: allow uploading doc with command, not just as reply
-    # only work with a doc
 
     conn = connected(context.bot, update, chat, user.id, need_admin=True)
     if conn:
-        chat = dispatcher.bot.getChat(conn)
-        chat_name = dispatcher.bot.getChat(conn).title
+        chat = await context.bot.get_chat(conn)
+        chat_name = chat.title
     else:
         if update.effective_message.chat.type == "private":
-            update.effective_message.reply_text("This is a group only command!")
+            await update.effective_message.reply_text("This is a group only command!")
             return ""
 
         chat = update.effective_chat
@@ -51,26 +48,24 @@ def import_data(update, context):
 
     if msg.reply_to_message and msg.reply_to_message.document:
         try:
-            file_info = context.bot.get_file(msg.reply_to_message.document.file_id)
+            file_info = await context.bot.get_file(msg.reply_to_message.document.file_id)
         except BadRequest:
-            msg.reply_text(
+            await msg.reply_text(
                 "Try downloading and uploading the file yourself again, This one seem broken to me!",
             )
             return
 
         with BytesIO() as file:
-            file_info.download(out=file)
+            await file_info.download_to_memory(out=file)
             file.seek(0)
             data = json.load(file)
 
-        # only import one group
         if len(data) > 1 and str(chat.id) not in data:
-            msg.reply_text(
+            await msg.reply_text(
                 "There are more than one group in this file and the chat.id is not same! How am i supposed to import it?",
             )
             return
 
-        # Check if backup is this chat
         try:
             if data.get(str(chat.id)) is None:
                 if conn:
@@ -79,18 +74,16 @@ def import_data(update, context):
                     )
                 else:
                     text = "Backup comes from another chat, I can't return another chat to this chat"
-                return msg.reply_text(text, parse_mode="markdown")
+                return await msg.reply_text(text, parse_mode="markdown")
         except Exception:
-            return msg.reply_text("There was a problem while importing the data!")
-        # Check if backup is from self
+            return await msg.reply_text("There was a problem while importing the data!")
         try:
             if str(context.bot.id) != str(data[str(chat.id)]["bot"]):
-                return msg.reply_text(
+                return await msg.reply_text(
                     "Backup from another bot that is not suggested might cause the problem, documents, photos, videos, audios, records might not work as it should be.",
                 )
         except Exception:
             pass
-        # Select data source
         if str(chat.id) in data:
             data = data[str(chat.id)]["hashes"]
         else:
@@ -100,7 +93,7 @@ def import_data(update, context):
             for mod in DATA_IMPORT:
                 mod.__import_data__(str(chat.id), data)
         except Exception:
-            msg.reply_text(
+            await msg.reply_text(
                 f"An error occurred while recovering your data. The process failed. If you experience a problem with this, please take it to @YorkTownEagleUnion",
             )
 
@@ -111,37 +104,33 @@ def import_data(update, context):
             )
             return
 
-        # TODO: some of that link logic
-        # NOTE: consider default permissions stuff?
         if conn:
 
             text = "Backup fully restored on *{}*.".format(chat_name)
         else:
             text = "Backup fully restored"
-        msg.reply_text(text, parse_mode="markdown")
+        await msg.reply_text(text, parse_mode="markdown")
 
 @kigcmd(command='export')
 @user_admin(AdminPerms.CAN_CHANGE_INFO)
 @rate_limit(40, 60)
-def export_data(update, context):  # sourcery no-metrics
+async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_data = context.chat_data
-    msg = update.effective_message  # type: Optional[Message]
-    user = update.effective_user  # type: Optional[User]
+    msg = update.effective_message
+    user = update.effective_user
     chat_id = update.effective_chat.id
     chat = update.effective_chat
     current_chat_id = update.effective_chat.id
     conn = connected(context.bot, update, chat, user.id, need_admin=True)
     if conn:
-        chat = dispatcher.bot.getChat(conn)
+        chat = await context.bot.get_chat(conn)
         chat_id = conn
-        # chat_name = dispatcher.bot.getChat(conn).title
     else:
         if update.effective_message.chat.type == "private":
-            update.effective_message.reply_text("This is a group only command!")
+            await update.effective_message.reply_text("This is a group only command!")
             return ""
         chat = update.effective_chat
         chat_id = update.effective_chat.id
-        # chat_name = update.effective_message.chat.title
 
     jam = time.time()
     new_jam = jam + 10800
@@ -151,7 +140,7 @@ def export_data(update, context):  # sourcery no-metrics
             timeformatt = time.strftime(
                 "%H:%M:%S %d/%m/%Y", time.localtime(checkchat.get("value")),
             )
-            update.effective_message.reply_text(
+            await update.effective_message.reply_text(
                 "You can only backup once a day!\nYou can backup again in about `{}`".format(
                     timeformatt,
                 ),
@@ -166,21 +155,17 @@ def export_data(update, context):  # sourcery no-metrics
 
     note_list = sql.get_all_chat_notes(chat_id)
     backup = {}
-    # button = ""
     buttonlist = []
     namacat = ""
     isicat = ""
     rules = ""
     count = 0
     countbtn = 0
-    # Notes
     for note in note_list:
         count += 1
-        # getnote = sql.get_note(chat_id, note.name)
         namacat += "{}<###splitter###>".format(note.name)
         if note.msgtype == 1:
             tombol = sql.get_buttons(chat_id, note.name)
-            # keyb = []
             for btn in tombol:
                 countbtn += 1
                 if btn.same_line:
@@ -229,48 +214,9 @@ def export_data(update, context):  # sourcery no-metrics
         )
         for x in range(count)
     }
-    # Rules
     rules = rulessql.get_rules(chat_id)
-    # Blacklist
     bl = list(blacklistsql.get_chat_blacklist(chat_id))
-    # Disabled command
     disabledcmd = list(disabledsql.get_all_disabled(chat_id))
-    # Filters (TODO)
-    """
-	all_filters = list(filtersql.get_chat_triggers(chat_id))
-	export_filters = {}
-	for filters in all_filters:
-		filt = filtersql.get_filter(chat_id, filters)
-		# print(vars(filt))
-		if filt.is_sticker:
-			tipefilt = "sticker"
-		elif filt.is_document:
-			tipefilt = "doc"
-		elif filt.is_image:
-			tipefilt = "img"
-		elif filt.is_audio:
-			tipefilt = "audio"
-		elif filt.is_voice:
-			tipefilt = "voice"
-		elif filt.is_video:
-			tipefilt = "video"
-		elif filt.has_buttons:
-			tipefilt = "button"
-			buttons = filtersql.get_buttons(chat.id, filt.keyword)
-			print(vars(buttons))
-		elif filt.has_markdown:
-			tipefilt = "text"
-		if tipefilt == "button":
-			content = "{}#=#{}|btn|{}".format(tipefilt, filt.reply, buttons)
-		else:
-			content = "{}#=#{}".format(tipefilt, filt.reply)
-		print(content)
-		export_filters[filters] = content
-	print(export_filters)
-	"""
-    # Welcome (TODO)
-    # welc = welcsql.get_welc_pref(chat_id)
-    # Locked
     curr_locks = locksql.get_locks(chat_id)
     curr_restr = locksql.get_restr(chat_id)
 
@@ -313,9 +259,6 @@ def export_data(update, context):  # sourcery no-metrics
         locked_restr = {}
 
     locks = {"locks": locked_lock, "restrict": locked_restr}
-    # Warns (TODO)
-    # warns = warnssql.get_warns(chat_id)
-    # Backing up
     backup[chat_id] = {
         "bot": context.bot.id,
         "hashes": {
@@ -329,30 +272,27 @@ def export_data(update, context):  # sourcery no-metrics
     baccinfo = json.dumps(backup, indent=4)
     with open("KigyoRobot{}.json".format(chat_id), "w") as f:
         f.write(str(baccinfo))
-    context.bot.sendChatAction(current_chat_id, "upload_document")
+    await context.bot.send_chat_action(current_chat_id, "upload_document")
     tgl = time.strftime("%H:%M:%S - %d/%m/%Y", time.localtime(time.time()))
-    context.bot.sendDocument(
+    await context.bot.send_document(
         current_chat_id,
         document=open("KigyoRobot{}.json".format(chat_id), "rb"),
         caption="*Successfully Exported backup:*\nChat: `{}`\nChat ID: `{}`\nOn: `{}`\n\nNote: This `KigyoRobot-Backup` was specially made for notes.".format(
             chat.title, chat_id, tgl,
         ),
-        timeout=360,
+        read_timeout=360,
         reply_to_message_id=msg.message_id,
         parse_mode=ParseMode.MARKDOWN,
     )
-    os.remove("KigyoRobot{}.json".format(chat_id))  # Cleaning file
+    os.remove("KigyoRobot{}.json".format(chat_id))
 
 
-# Temporary data
 def put_chat(chat_id, value, chat_data):
-    # print(chat_data)
     status = value is not False
     chat_data[chat_id] = {"backups": {"status": status, "value": value}}
 
 
 def get_chat(chat_id, chat_data):
-    # print(chat_data)
     try:
         return chat_data[chat_id]["backups"]
     except KeyError:

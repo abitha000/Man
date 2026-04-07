@@ -2,9 +2,10 @@ import datetime
 from typing import List
 
 import requests
-from tg_bot import TIME_API_KEY, dispatcher
-from telegram import ParseMode, Update
-from telegram.ext import CallbackContext
+from tg_bot import TIME_API_KEY
+from telegram import Update
+from telegram.constants import ParseMode
+from telegram.ext import ContextTypes
 from tg_bot.modules.helper_funcs.decorators import kigcmd, rate_limit
 
 
@@ -48,22 +49,22 @@ def generate_time(to_find: str, findtype: List[str]) -> str:
             f"<b>Current Date:</b> <code>{current_date}</code>\n"
             '<b>Timezones:</b> <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">List here</a>'
         )
-    except:
+    except Exception:
         result = None
 
     return result
 
 @kigcmd(command='time')
 @rate_limit(40, 60)
-def gettime(update: Update, context: CallbackContext):
+async def gettime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
 
     try:
         query = message.text.strip().split(" ", 1)[1]
-    except:
-        message.reply_text("Provide a country name/abbreviation/timezone to find.")
+    except Exception:
+        await message.reply_text("Provide a country name/abbreviation/timezone to find.")
         return
-    send_message = message.reply_text(
+    send_message = await message.reply_text(
         f"Finding timezone info for <b>{query}</b>", parse_mode=ParseMode.HTML
     )
 
@@ -74,7 +75,7 @@ def gettime(update: Update, context: CallbackContext):
         result = generate_time(query_timezone, ["zoneName", "countryName"])
 
     if not result:
-        send_message.edit_text(
+        await send_message.edit_text(
             f"Timezone info not available for <b>{query}</b>\n"
             '<b>All Timezones:</b> <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">List here</a>',
             parse_mode=ParseMode.HTML,
@@ -82,7 +83,7 @@ def gettime(update: Update, context: CallbackContext):
         )
         return
 
-    send_message.edit_text(
+    await send_message.edit_text(
         result, parse_mode=ParseMode.HTML, disable_web_page_preview=True
     )
 

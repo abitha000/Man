@@ -1,31 +1,21 @@
+import asyncio
 import contextlib
 from io import BytesIO
 import re
 from tg_bot.modules.helper_funcs.chat_status import dev_plus, sudo_plus
-from tg_bot.modules.helper_funcs.decorators import rate_limit
+from tg_bot.modules.helper_funcs.decorators import rate_limit, kigyo_handler
 import time
 import tg_bot.modules.sql.users_sql as sql
-from tg_bot import DEV_USERS, log, OWNER_ID, dispatcher, redis_conn
+from tg_bot import DEV_USERS, log, OWNER_ID, redis_client
+import tg_bot
 from tg_bot.modules.helper_funcs.msg_types import Types
 from telegram import TelegramError, Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.error import BadRequest
-from telegram.ext import CallbackContext, CommandHandler, Filters, MessageHandler, ChatMemberHandler, CallbackQueryHandler
+from telegram.ext import ContextTypes, CommandHandler, filters, MessageHandler, ChatMemberHandler, CallbackQueryHandler
 
 USERS_GROUP = 4
 CHAT_GROUP = 5
 DEV_AND_MORE = DEV_USERS.append(int(OWNER_ID))
-
-
-ENUM_FUNC_MAP = {
-    Types.TEXT.value: dispatcher.bot.send_message,
-    Types.BUTTON_TEXT.value: dispatcher.bot.send_message,
-    Types.STICKER.value: dispatcher.bot.send_sticker,
-    Types.DOCUMENT.value: dispatcher.bot.send_document,
-    Types.PHOTO.value: dispatcher.bot.send_photo,
-    Types.AUDIO.value: dispatcher.bot.send_audio,
-    Types.VOICE.value: dispatcher.bot.send_voice,
-    Types.VIDEO.value: dispatcher.bot.send_video,
-}
 
 
 def parse_markdown_buttons(text):
@@ -50,96 +40,107 @@ def parse_markdown_buttons(text):
     return text, markup
 
 
-def send_broadcast_messages(context, queue_key, msg_text, meta_key, lock_key, target_type):
+async def send_broadcast_messages(context, queue_key, msg_text, meta_key, lock_key, target_type):
     failed = 0
     text, markup = parse_markdown_buttons(msg_text)
-    data_type = int(redis_conn.hget(meta_key, "data_type").decode())
-    content = redis_conn.hget(meta_key, "content").decode() or None
+    data_type = int((await redis_client.hget(meta_key, "data_type")))
+    content = (await redis_client.hget(meta_key, "content")) or None
     while True:
-        status = redis_conn.hget(meta_key, "status")
-        if status and status.decode() != "running":
+        status = await redis_client.hget(meta_key, "status")
+        if status and status != "running":
             break
-        nxt = redis_conn.lpop(queue_key)
+        nxt = await redis_client.lpop(queue_key)
         if not nxt:
             break
         try:
             if data_type in (Types.BUTTON_TEXT, Types.TEXT):
-                context.bot.sendMessage(
+                await context.bot.send_message(
                     int(nxt),
                     text,
                     parse_mode="MARKDOWN",
                     disable_web_page_preview=True,
                     reply_markup=markup,
                 )
-            elif ENUM_FUNC_MAP[data_type] == dispatcher.bot.send_sticker:
-                ENUM_FUNC_MAP[data_type](
+            elif data_type == Types.STICKER:
+                await context.bot.send_sticker(
                     int(nxt),
                     content,
                     reply_markup=markup,
                 )
             else:
-                ENUM_FUNC_MAP[data_type](
-                    int(nxt),
-                    content,
-                    caption=text,
-                    parse_mode="MARKDOWN",
-                    disable_web_page_preview=True,
-                    reply_markup=markup,
-                )
-            redis_conn.hincrby(meta_key, f"sent_{target_type}", 1)
+                send_func_map = {
+                    Types.DOCUMENT.value: context.bot.send_document,
+                    Types.PHOTO.value: context.bot.send_photo,
+                    Types.AUDIO.value: context.bot.send_audio,
+                    Types.VOICE.value: context.bot.send_voice,
+                    Types.VIDEO.value: context.bot.send_video,
+                }
+                func = send_func_map.get(data_type)
+                if func:
+                    await func(
+                        int(nxt),
+                        content,
+                        caption=text,
+                        parse_mode="MARKDOWN",
+                        disable_web_page_preview=True,
+                        reply_markup=markup,
+                    )
+            await redis_client.hincrby(meta_key, f"sent_{target_type}", 1)
         except BadRequest:
             try:
                 if data_type in (Types.BUTTON_TEXT, Types.TEXT):
-                    context.bot.sendMessage(
+                    await context.bot.send_message(
                         int(nxt),
                         text,
                         disable_web_page_preview=True,
                         reply_markup=markup,
                     )
-                elif ENUM_FUNC_MAP[data_type] == dispatcher.bot.send_sticker:
-                    ENUM_FUNC_MAP[data_type](
+                elif data_type == Types.STICKER:
+                    await context.bot.send_sticker(
                         int(nxt),
                         content,
                         reply_markup=markup,
                     )
                 else:
-                    ENUM_FUNC_MAP[data_type](
-                        int(nxt),
-                        content,
-                        caption=text,
-                        disable_web_page_preview=True,
-                        reply_markup=markup,
-                    )
-                redis_conn.hincrby(meta_key, f"sent_{target_type}", 1)
+                    func = send_func_map.get(data_type)
+                    if func:
+                        await func(
+                            int(nxt),
+                            content,
+                            caption=text,
+                            disable_web_page_preview=True,
+                            reply_markup=markup,
+                        )
+                await redis_client.hincrby(meta_key, f"sent_{target_type}", 1)
             except TelegramError:
                 failed += 1
-                redis_conn.hincrby(meta_key, f"failed_{target_type}", 1)
+                await redis_client.hincrby(meta_key, f"failed_{target_type}", 1)
         except TelegramError:
             failed += 1
-            redis_conn.hincrby(meta_key, f"failed_{target_type}", 1)
-        redis_conn.hset(meta_key, "updated_at", int(time.time()))
-        redis_conn.expire(lock_key, 3600)
-        time.sleep(0.1)
+            await redis_client.hincrby(meta_key, f"failed_{target_type}", 1)
+        await redis_client.hset(meta_key, "updated_at", int(time.time()))
+        await redis_client.expire(lock_key, 3600)
+        await asyncio.sleep(0.1)
     return failed
 
 
-def perform_broadcast(context, meta_key, lock_key, gq_key, uq_key, msg_text, to_group, to_user):
-    redis_conn.hset(meta_key, "status", "running")
+async def perform_broadcast(context, meta_key, lock_key, gq_key, uq_key, msg_text, to_group, to_user):
+    await redis_client.hset(meta_key, "status", "running")
     failed_g = 0
     failed_u = 0
     if to_group:
-        failed_g = send_broadcast_messages(context, gq_key, msg_text, meta_key, lock_key, "groups")
+        failed_g = await send_broadcast_messages(context, gq_key, msg_text, meta_key, lock_key, "groups")
     if to_user:
-        failed_u = send_broadcast_messages(context, uq_key, msg_text, meta_key, lock_key, "users")
-    status = redis_conn.hget(meta_key, "status").decode() if redis_conn.hget(meta_key, "status") else "completed"
+        failed_u = await send_broadcast_messages(context, uq_key, msg_text, meta_key, lock_key, "users")
+    status = await redis_client.hget(meta_key, "status")
+    status = status if status else "completed"
     if status == "running":
-        redis_conn.hset(meta_key, "status", "completed")
-    redis_conn.delete(lock_key)
+        await redis_client.hset(meta_key, "status", "completed")
+    await redis_client.delete(lock_key)
     return failed_g, failed_u, status
 
 
-def get_user_id(username):
-    # ensure valid userid
+async def get_user_id(username):
     if len(username) <= 5:
         return None
 
@@ -157,7 +158,7 @@ def get_user_id(username):
     else:
         for user_obj in users:
             try:
-                userdat = dispatcher.bot.get_chat(user_obj)
+                userdat = await tg_bot.application.bot.get_chat(user_obj)
                 if userdat.username == username:
                     return userdat.id
 
@@ -170,7 +171,7 @@ def get_user_id(username):
 
 @dev_plus
 @rate_limit(40, 60)
-def broadcast(update: Update, context: CallbackContext):
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     to_send = update.effective_message.text.split(None, 1)
 
     if len(to_send) >= 2 or update.effective_message.reply_to_message:
@@ -207,7 +208,6 @@ def broadcast(update: Update, context: CallbackContext):
                 content = replied.video.file_id
                 text = replied.caption or ""
             else:
-                # text message
                 msg_text = replied.text or replied.caption or ""
                 text, markup = parse_markdown_buttons(msg_text)
                 data_type = Types.BUTTON_TEXT if markup else Types.TEXT
@@ -222,31 +222,31 @@ def broadcast(update: Update, context: CallbackContext):
         lock_key = "broadcast:lock"
         gq_key = "broadcast:groups"
         uq_key = "broadcast:users"
-        existing = redis_conn.hgetall(meta_key)
-        if existing and existing.get(b"status", b"").decode() in ["running", "paused", "pending_confirmation"]:
-            update.effective_message.reply_text("A broadcast is in progress. Use /broadcaststatus or /broadcastresume.")
+        existing = await redis_client.hgetall(meta_key)
+        if existing and existing.get("status", "") in ["running", "paused", "pending_confirmation"]:
+            await update.effective_message.reply_text("A broadcast is in progress. Use /broadcaststatus or /broadcastresume.")
             return
         if to_group:
-            redis_conn.delete(gq_key)
+            await redis_client.delete(gq_key)
             for c in sql.get_all_chats() or []:
-                redis_conn.rpush(gq_key, int(c))
+                await redis_client.rpush(gq_key, int(c))
         if to_user:
-            redis_conn.delete(uq_key)
+            await redis_client.delete(uq_key)
             for u in sql.get_all_users() or []:
-                redis_conn.rpush(uq_key, int(u))
-        total_groups = redis_conn.llen(gq_key) if to_group else 0
-        total_users = redis_conn.llen(uq_key) if to_user else 0
+                await redis_client.rpush(uq_key, int(u))
+        total_groups = await redis_client.llen(gq_key) if to_group else 0
+        total_users = await redis_client.llen(uq_key) if to_user else 0
         if update.effective_message.reply_to_message:
             replied = update.effective_message.reply_to_message
             if replied.sticker or replied.document or replied.photo or replied.audio or replied.voice or replied.video:
-                message_text = text  # caption
+                message_text = text
             else:
-                message_text = msg_text  # original text
+                message_text = msg_text
         else:
-            message_text = msg_text  # original text
-        redis_conn.hmset(
+            message_text = msg_text
+        await redis_client.hset(
             meta_key,
-            {
+            mapping={
                 "message": message_text,
                 "to_group": int(to_group),
                 "to_user": int(to_user),
@@ -271,85 +271,83 @@ def broadcast(update: Update, context: CallbackContext):
         reply_markup = InlineKeyboardMarkup(keyboard)
         preview_text, _ = parse_markdown_buttons(text)
         preview_text = f"Broadcast Preview:\n\n{preview_text}\n\nTargets:\nGroups: {total_groups}\nUsers: {total_users}\n\nConfirm to start broadcasting?"
-        update.effective_message.reply_text(preview_text, reply_markup=reply_markup, parse_mode="MARKDOWN")
+        await update.effective_message.reply_text(preview_text, reply_markup=reply_markup, parse_mode="MARKDOWN")
         return
 
 
 @dev_plus
 @rate_limit(20, 30)
-def broadcast_status(update: Update, context: CallbackContext):
-    meta = redis_conn.hgetall("broadcast:meta")
+async def broadcast_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    meta = await redis_client.hgetall("broadcast:meta")
     if not meta:
-        update.effective_message.reply_text("No broadcast state.")
+        await update.effective_message.reply_text("No broadcast state.")
         return
-    m = {k.decode(): v.decode() for k, v in meta.items()}
+    m = meta
     tg = int(m.get("total_groups", 0) or 0)
     tu = int(m.get("total_users", 0) or 0)
     sg = int(m.get("sent_groups", 0) or 0)
     su = int(m.get("sent_users", 0) or 0)
     fg = int(m.get("failed_groups", 0) or 0)
     fu = int(m.get("failed_users", 0) or 0)
-    rg = redis_conn.llen("broadcast:groups") if int(m.get("to_group", 0)) else 0
-    ru = redis_conn.llen("broadcast:users") if int(m.get("to_user", 0)) else 0
+    rg = await redis_client.llen("broadcast:groups") if int(m.get("to_group", 0)) else 0
+    ru = await redis_client.llen("broadcast:users") if int(m.get("to_user", 0)) else 0
     status = m.get("status", "unknown")
-    update.effective_message.reply_text(
+    await update.effective_message.reply_text(
         f"Status: {status}\nGroups: {sg}/{tg} (left {rg}), failed {fg}\nUsers: {su}/{tu} (left {ru}), failed {fu}"
     )
 
 
 @dev_plus
 @rate_limit(40, 60)
-def broadcast_resume(update: Update, context: CallbackContext):
+async def broadcast_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta_key = "broadcast:meta"
     lock_key = "broadcast:lock"
     gq_key = "broadcast:groups"
     uq_key = "broadcast:users"
-    meta = redis_conn.hgetall(meta_key)
+    meta = await redis_client.hgetall(meta_key)
     if not meta:
-        update.effective_message.reply_text("No broadcast to resume.")
+        await update.effective_message.reply_text("No broadcast to resume.")
         return
-    m = {k.decode(): v.decode() for k, v in meta.items()}
-    if m.get("status") == "completed" or (redis_conn.llen(gq_key) == 0 and redis_conn.llen(uq_key) == 0):
-        update.effective_message.reply_text("Broadcast already completed.")
+    m = meta
+    if m.get("status") == "completed" or (await redis_client.llen(gq_key) == 0 and await redis_client.llen(uq_key) == 0):
+        await update.effective_message.reply_text("Broadcast already completed.")
         return
-    if not redis_conn.set(lock_key, str(int(time.time())), nx=True, ex=3600):
-        update.effective_message.reply_text("Another broadcast is running. Try again later.")
+    if not await redis_client.set(lock_key, str(int(time.time())), nx=True, ex=3600):
+        await update.effective_message.reply_text("Another broadcast is running. Try again later.")
         return
-    redis_conn.hset(meta_key, "status", "running")
+    await redis_client.hset(meta_key, "status", "running")
     msg_text = m.get("message", "")
-    data_type = int(m.get("data_type", 0))
-    content = m.get("content", "") or None
     to_group = bool(int(m.get("to_group", 0)))
     to_user = bool(int(m.get("to_user", 0)))
-    failed_g, failed_u, final_status = perform_broadcast(context, meta_key, lock_key, gq_key, uq_key, msg_text, to_group, to_user)
+    failed_g, failed_u, final_status = await perform_broadcast(context, meta_key, lock_key, gq_key, uq_key, msg_text, to_group, to_user)
     if final_status == "killed":
-        update.effective_message.reply_text(
+        await update.effective_message.reply_text(
             f"Broadcast was killed.\nGroups failed: {failed_g}.\nUsers failed: {failed_u}."
         )
     else:
-        update.effective_message.reply_text(
+        await update.effective_message.reply_text(
             f"Broadcast complete.\nGroups failed: {failed_g}.\nUsers failed: {failed_u}."
         )
 
 
 @dev_plus
 @rate_limit(40, 60)
-def broadcast_kill(update: Update, context: CallbackContext):
+async def broadcast_kill(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta_key = "broadcast:meta"
-    meta = redis_conn.hgetall(meta_key)
+    meta = await redis_client.hgetall(meta_key)
     if not meta:
-        update.effective_message.reply_text("No broadcast in progress.")
+        await update.effective_message.reply_text("No broadcast in progress.")
         return
-    m = {k.decode(): v.decode() for k, v in meta.items()}
+    m = meta
     if m.get("status") != "running":
-        update.effective_message.reply_text("Broadcast is not currently running.")
+        await update.effective_message.reply_text("Broadcast is not currently running.")
         return
-    redis_conn.hset(meta_key, "status", "killed")
-    update.effective_message.reply_text("Broadcast has been killed. It will stop shortly.")
+    await redis_client.hset(meta_key, "status", "killed")
+    await update.effective_message.reply_text("Broadcast has been killed. It will stop shortly.")
 
 
 @dev_plus
-def broadcast_callback(update: Update, context: CallbackContext):
+async def broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = update.effective_user
     data = query.data
@@ -357,56 +355,54 @@ def broadcast_callback(update: Update, context: CallbackContext):
     lock_key = "broadcast:lock"
     gq_key = "broadcast:groups"
     uq_key = "broadcast:users"
-    meta = redis_conn.hgetall(meta_key)
+    meta = await redis_client.hgetall(meta_key)
     if not meta:
-        query.answer("No pending broadcast.")
+        await query.answer("No pending broadcast.")
         return
-    m = {k.decode(): v.decode() for k, v in meta.items()}
+    m = meta
     if str(user.id) != m.get("admin_id"):
-        query.answer("You are not authorized to confirm this broadcast.")
+        await query.answer("You are not authorized to confirm this broadcast.")
         return
     if data == "broadcast_confirm":
         if m.get("status") != "pending_confirmation":
-            query.answer("Broadcast already processed.")
+            await query.answer("Broadcast already processed.")
             return
-        if not redis_conn.set(lock_key, str(int(time.time())), nx=True, ex=3600):
-            query.answer("Another broadcast is running.")
+        if not await redis_client.set(lock_key, str(int(time.time())), nx=True, ex=3600):
+            await query.answer("Another broadcast is running.")
             return
         msg_text = m.get("message", "")
-        data_type = int(m.get("data_type", 0))
-        content = m.get("content", "") or None
         to_group = bool(int(m.get("to_group", 0)))
         to_user = bool(int(m.get("to_user", 0)))
-        failed_g, failed_u, final_status = perform_broadcast(context, meta_key, lock_key, gq_key, uq_key, msg_text, to_group, to_user)
+        failed_g, failed_u, final_status = await perform_broadcast(context, meta_key, lock_key, gq_key, uq_key, msg_text, to_group, to_user)
         if final_status == "killed":
-            query.edit_message_text(f"Broadcast was killed.\nGroups failed: {failed_g}.\nUsers failed: {failed_u}.")
+            await query.edit_message_text(f"Broadcast was killed.\nGroups failed: {failed_g}.\nUsers failed: {failed_u}.")
         else:
-            query.edit_message_text(f"Broadcast complete.\nGroups failed: {failed_g}.\nUsers failed: {failed_u}.")
-        query.answer()
+            await query.edit_message_text(f"Broadcast complete.\nGroups failed: {failed_g}.\nUsers failed: {failed_u}.")
+        await query.answer()
     elif data == "broadcast_cancel":
-        redis_conn.delete(meta_key)
-        redis_conn.delete(gq_key)
-        redis_conn.delete(uq_key)
-        query.edit_message_text("Broadcast cancelled.")
-        query.answer()
+        await redis_client.delete(meta_key)
+        await redis_client.delete(gq_key)
+        await redis_client.delete(uq_key)
+        await query.edit_message_text("Broadcast cancelled.")
+        await query.answer()
 
 
-def welcomeFilter(update: Update, context: CallbackContext):
+async def welcomeFilter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type not in ["group", "supergroup"]:
         return
     if nm := update.chat_member.new_chat_member:
         om = update.chat_member.old_chat_member
-    if (nm.status, om.status) in [(nm.MEMBER, nm.KICKED), (nm.MEMBER, nm.LEFT), (nm.KICKED, nm.MEMBER), 
-                                  (nm.KICKED, nm.ADMINISTRATOR), (nm.KICKED, nm.CREATOR), (nm.LEFT, nm.MEMBER), 
+    if (nm.status, om.status) in [(nm.MEMBER, nm.KICKED), (nm.MEMBER, nm.LEFT), (nm.KICKED, nm.MEMBER),
+                                  (nm.KICKED, nm.ADMINISTRATOR), (nm.KICKED, nm.CREATOR), (nm.LEFT, nm.MEMBER),
                                   (nm.LEFT, nm.ADMINISTRATOR), (nm.LEFT, nm.CREATOR)]:
-        return log_user(update, context)
+        return await log_user(update, context)
 
 @rate_limit(30, 60)
-def log_user(update: Update, _: CallbackContext):
+async def log_user(update: Update, _: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     msg = update.effective_message
-    
-    if not msg and update.chat_member: # ChatMemberUpdate for join/leave
+
+    if not msg and update.chat_member:
         sql.update_user(update.effective_user.id, update.effective_user.username, chat.id, chat.title)
         return
 
@@ -452,48 +448,46 @@ def log_user(update: Update, _: CallbackContext):
 
     if msg.new_chat_members:
         for user in msg.new_chat_members:
-            if user.id == msg.from_user.id:  # we already added that in the first place
+            if user.id == msg.from_user.id:
                 continue
             sql.update_user(user.id, user.username, chat.id, chat.title)
 
 
 @sudo_plus
 @rate_limit(40, 60)
-def chats(update: Update, context: CallbackContext):
+async def chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     all_chats = sql.get_all_chats() or []
     chatfile = "List of chats.\n0. Chat name | Chat ID | Members count\n"
     P = 1
     for chat in all_chats:
         try:
-            curr_chat = context.bot.getChat(chat.chat_id)
-            bot_member = curr_chat.get_member(context.bot.id)
-            chat_members = curr_chat.get_member_count(context.bot.id)
+            curr_chat = await context.bot.get_chat(chat.chat_id)
+            bot_member = await curr_chat.get_member(context.bot.id)
+            chat_members = await curr_chat.get_member_count()
             chatfile += "{}. {} | {} | {}\n".format(
                 P, chat.chat_name, chat.chat_id, chat_members
             )
             P += 1
-        except:
+        except Exception:
             pass
 
     with BytesIO(str.encode(chatfile)) as output:
         output.name = "glist.txt"
-        update.effective_message.reply_document(
+        await update.effective_message.reply_document(
             document=output,
             filename="glist.txt",
             caption="Here be the list of groups in my database.",
         )
 
 @rate_limit(50, 60)
-def chat_checker(update: Update, context: CallbackContext):
+async def chat_checker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot = context.bot
-    if update.effective_message.chat.get_member(bot.id).can_send_messages is False:
-        bot.leaveChat(update.effective_message.chat.id)
+    if (await update.effective_message.chat.get_member(bot.id)).can_send_messages is False:
+        await bot.leave_chat(update.effective_message.chat.id)
 
 
 def __user_info__(user_id):
     if user_id in [777000, 1087968824]:
-        return """Groups count: <code>N/A</code>"""
-    if user_id == dispatcher.bot.id:
         return """Groups count: <code>N/A</code>"""
     num_chats = sql.get_user_num_chats(user_id)
     return f"""Groups count: <code>{num_chats}</code>"""
@@ -507,42 +501,40 @@ def __migrate__(old_chat_id, new_chat_id):
     sql.migrate_chat(old_chat_id, new_chat_id)
 
 
-__help__ = ""  # no help string
+__help__ = ""
 
 BROADCAST_HANDLER = CommandHandler(
-    ["broadcastall", "broadcastusers", "broadcastgroups"], broadcast, run_async=True
+    ["broadcastall", "broadcastusers", "broadcastgroups"], broadcast
 )
 BROADCST_STATUS_HANDLER = CommandHandler(
-    ["broadcaststatus"], broadcast_status, run_async=True
+    ["broadcaststatus"], broadcast_status
 )
 BROADCST_RESUME_HANDLER = CommandHandler(
-    ["broadcastresume"], broadcast_resume, run_async=True
+    ["broadcastresume"], broadcast_resume
 )
 BROADCAST_KILL_HANDLER = CommandHandler(
-    ["broadcastkill"], broadcast_kill, run_async=True
+    ["broadcastkill"], broadcast_kill
 )
-BROADCAST_CALLBACK_HANDLER = CallbackQueryHandler(broadcast_callback, pattern=r"broadcast_(confirm|cancel)", run_async=True)
+BROADCAST_CALLBACK_HANDLER = CallbackQueryHandler(broadcast_callback, pattern=r"broadcast_(confirm|cancel)")
 USER_HANDLER = MessageHandler(
-    Filters.all & Filters.chat_type.groups & ~Filters.user(777000), log_user, run_async=True
+    filters.ALL & filters.ChatType.GROUPS & ~filters.User(777000), log_user
 )
 CHAT_CHECKER_HANDLER = MessageHandler(
-    Filters.all & Filters.chat_type.groups & ~Filters.user(777000), chat_checker, run_async=True
+    filters.ALL & filters.ChatType.GROUPS & ~filters.User(777000), chat_checker
 )
-# CHATLIST_HANDLER = CommandHandler("chatlist", chats, run_async=True)
 
-dispatcher.add_handler(
+kigyo_handler._add_handler(
     ChatMemberHandler(
-        welcomeFilter, ChatMemberHandler.CHAT_MEMBER, run_async=True
+        welcomeFilter, ChatMemberHandler.CHAT_MEMBER
     ), group=110)
 
-dispatcher.add_handler(USER_HANDLER, USERS_GROUP)
-dispatcher.add_handler(BROADCAST_HANDLER)
-dispatcher.add_handler(BROADCST_STATUS_HANDLER)
-dispatcher.add_handler(BROADCST_RESUME_HANDLER)
-dispatcher.add_handler(BROADCAST_KILL_HANDLER)
-dispatcher.add_handler(BROADCAST_CALLBACK_HANDLER)
-# dispatcher.add_handler(CHATLIST_HANDLER)
-dispatcher.add_handler(CHAT_CHECKER_HANDLER, CHAT_GROUP)
+kigyo_handler._add_handler(USER_HANDLER, USERS_GROUP)
+kigyo_handler._add_handler(BROADCAST_HANDLER)
+kigyo_handler._add_handler(BROADCST_STATUS_HANDLER)
+kigyo_handler._add_handler(BROADCST_RESUME_HANDLER)
+kigyo_handler._add_handler(BROADCAST_KILL_HANDLER)
+kigyo_handler._add_handler(BROADCAST_CALLBACK_HANDLER)
+kigyo_handler._add_handler(CHAT_CHECKER_HANDLER, CHAT_GROUP)
 
 __mod_name__ = "Users"
 __handlers__ = [(USER_HANDLER, USERS_GROUP), BROADCAST_HANDLER, BROADCST_STATUS_HANDLER, BROADCST_RESUME_HANDLER, BROADCAST_KILL_HANDLER, BROADCAST_CALLBACK_HANDLER]

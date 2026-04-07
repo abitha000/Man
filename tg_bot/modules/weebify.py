@@ -1,5 +1,6 @@
-from telegram import ParseMode, Update
-from telegram.ext import CallbackContext
+from telegram.constants import ParseMode
+from telegram import Update
+from telegram.ext import ContextTypes
 from tg_bot.modules.helper_funcs.decorators import kigcmd, rate_limit
 
 normiefont = [
@@ -31,37 +32,37 @@ normiefont = [
     "z",
 ]
 weebyfont = [
-    "卂",
-    "乃",
-    "匚",
-    "刀",
-    "乇",
-    "下",
-    "厶",
-    "卄",
-    "工",
-    "丁",
-    "长",
-    "乚",
-    "从",
-    "𠘨",
-    "口",
-    "尸",
-    "㔿",
-    "尺",
-    "丂",
-    "丅",
-    "凵",
-    "リ",
-    "山",
-    "乂",
-    "丫",
-    "乙",
+    "\u5352",
+    "\u4e43",
+    "\u531a",
+    "\u5200",
+    "\u4e47",
+    "\u4e0b",
+    "\u53b6",
+    "\u5344",
+    "\u5de5",
+    "\u4e01",
+    "\u957f",
+    "\u4e5a",
+    "\u4ece",
+    "\ud842\ude28",
+    "\u53e3",
+    "\u5c38",
+    "\u353f",
+    "\u5c3a",
+    "\u4e02",
+    "\u4e05",
+    "\u51f5",
+    "\u30ea",
+    "\u5c71",
+    "\u4e42",
+    "\u4e2b",
+    "\u4e59",
 ]
 
 @kigcmd(command='weebify')
 @rate_limit(40, 60)
-def weebify(update: Update, context: CallbackContext):
+async def weebify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     message = update.effective_message
     string = ""
@@ -73,7 +74,7 @@ def weebify(update: Update, context: CallbackContext):
         string = "  ".join(args).lower()
 
     if not string:
-        message.reply_text("Usage is `/weebify <text>`", parse_mode=ParseMode.MARKDOWN)
+        await message.reply_text("Usage is `/weebify <text>`", parse_mode=ParseMode.MARKDOWN)
         return
 
     for normiecharacter in string:
@@ -82,6 +83,6 @@ def weebify(update: Update, context: CallbackContext):
             string = string.replace(normiecharacter, weebycharacter)
 
     if message.reply_to_message:
-        message.reply_to_message.reply_text(string)
+        await message.reply_to_message.reply_text(string)
     else:
-        message.reply_text(string)
+        await message.reply_text(string)

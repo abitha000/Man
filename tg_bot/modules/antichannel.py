@@ -1,7 +1,7 @@
-from telegram.ext.filters import Filters
+from telegram.ext import filters
 from tg_bot.modules.helper_funcs.decorators import kigcmd, kigmsg, rate_limit
-from telegram import Update, message
-from telegram.ext import CallbackContext
+from telegram import Update
+from telegram.ext import ContextTypes
 from ..modules.helper_funcs.anonymous import user_admin, AdminPerms
 import html
 from ..modules.sql.antichannel_sql import antichannel_status, disable_antichannel, enable_antichannel
@@ -10,7 +10,7 @@ from ..modules.sql.antichannel_sql import antichannel_status, disable_antichanne
 @kigcmd(command="antichannel", group=100)
 @user_admin(AdminPerms.CAN_RESTRICT_MEMBERS)
 @rate_limit(40, 60)
-def set_antichannel(update: Update, context: CallbackContext):
+async def set_antichannel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     chat = update.effective_chat
     args = context.args
@@ -18,25 +18,25 @@ def set_antichannel(update: Update, context: CallbackContext):
         s = args[0].lower()
         if s in ["yes", "on"]:
             enable_antichannel(chat.id)
-            message.reply_html("Enabled antichannel in {}".format(html.escape(chat.title)))
+            await message.reply_html("Enabled antichannel in {}".format(html.escape(chat.title)))
         elif s in ["off", "no"]:
             disable_antichannel(chat.id)
-            message.reply_html("Disabled antichannel in {}".format(html.escape(chat.title)))
+            await message.reply_html("Disabled antichannel in {}".format(html.escape(chat.title)))
         else:
-            message.reply_text("Unrecognized arguments {}".format(s))
+            await message.reply_text("Unrecognized arguments {}".format(s))
         return
-    message.reply_html(
+    await message.reply_html(
         "Antichannel setting is currently {} in {}".format(antichannel_status(chat.id), html.escape(chat.title)))
 
 
-@kigmsg(Filters.chat_type.groups, group=110)
-def eliminate_channel(update: Update, context: CallbackContext):
+@kigmsg(filters.ChatType.GROUPS, group=110)
+async def eliminate_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     chat = update.effective_chat
     bot = context.bot
     if not antichannel_status(chat.id):
         return
     if message.sender_chat and message.sender_chat.type == "channel" and not message.is_automatic_forward:
-        message.delete()
+        await message.delete()
         sender_chat = message.sender_chat
-        bot.ban_chat_sender_chat(sender_chat_id=sender_chat.id, chat_id=chat.id)
+        await bot.ban_chat_sender_chat(sender_chat_id=sender_chat.id, chat_id=chat.id)

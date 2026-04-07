@@ -1,14 +1,14 @@
 import io
 import os
 
-# Common imports for eval
 import textwrap
 import traceback
 from contextlib import redirect_stdout
 
 from tg_bot import log as LOGGER, SYS_ADMIN
-from telegram import ParseMode, Update
-from telegram.ext import Filters, CallbackContext
+from telegram.constants import ParseMode
+from telegram import Update
+from telegram.ext import ContextTypes, filters
 from tg_bot.modules.helper_funcs.decorators import kigcmd, rate_limit
 
 namespaces = {}
@@ -34,14 +34,14 @@ def log_input(update):
     LOGGER.info(f"IN: {update.effective_message.text} (user={user}, chat={chat})")
 
 
-def send(msg, bot, update):
+async def send(msg, bot, update):
     if len(str(msg)) > 2000:
         with io.BytesIO(str.encode(msg)) as out_file:
             out_file.name = "output.txt"
-            bot.send_document(chat_id=update.effective_chat.id, document=out_file)
+            await bot.send_document(chat_id=update.effective_chat.id, document=out_file)
     else:
         LOGGER.info(f"OUT: '{msg}'")
-        bot.send_message(
+        await bot.send_message(
             chat_id=update.effective_chat.id,
             text=f"`{msg}`",
             parse_mode=ParseMode.MARKDOWN,
@@ -49,18 +49,18 @@ def send(msg, bot, update):
 
 
 
-@kigcmd(command=("e", "ev", "eva", "eval"), filters=Filters.user(SYS_ADMIN))
+@kigcmd(command=("e", "ev", "eva", "eval"), cmd_filter=filters.User(SYS_ADMIN))
 @rate_limit(40, 60)
-def evaluate(update: Update, context: CallbackContext):
+async def evaluate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot = context.bot
-    send(do(eval, bot, update), bot, update)
+    await send(do(eval, bot, update), bot, update)
 
 
-@kigcmd(command=("x", "ex", "exe", "exec", "py"), filters=Filters.user(SYS_ADMIN))
+@kigcmd(command=("x", "ex", "exe", "exec", "py"), cmd_filter=filters.User(SYS_ADMIN))
 @rate_limit(40, 60)
-def execute(update: Update, context: CallbackContext):
+async def execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot = context.bot
-    send(do(exec, bot, update), bot, update)
+    await send(do(exec, bot, update), bot, update)
 
 
 def cleanup_code(code):
@@ -107,7 +107,7 @@ def do(func, bot, update):
             else:
                 try:
                     result = f"{repr(eval(body, env))}"
-                except:
+                except Exception:
                     pass
         else:
             result = f"{value}{func_return}"
@@ -116,15 +116,15 @@ def do(func, bot, update):
 
 
 
-@kigcmd(command="clearlocals", filters=Filters.user(SYS_ADMIN))
+@kigcmd(command="clearlocals", cmd_filter=filters.User(SYS_ADMIN))
 @rate_limit(40, 60)
-def clear(update: Update, context: CallbackContext):
+async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot = context.bot
     log_input(update)
     global namespaces
     if update.message.chat_id in namespaces:
         del namespaces[update.message.chat_id]
-    send("Cleared locals.", bot, update)
+    await send("Cleared locals.", bot, update)
 
 
 __mod_name__ = "Eval Module"

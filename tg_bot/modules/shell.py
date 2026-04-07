@@ -1,17 +1,18 @@
 import subprocess
 
 from tg_bot import log as LOGGER, SYS_ADMIN
-from telegram import ParseMode, Update
-from telegram.ext import Filters, CallbackContext
+from telegram.constants import ParseMode
+from telegram import Update
+from telegram.ext import ContextTypes, filters
 from tg_bot.modules.helper_funcs.decorators import kigcmd, rate_limit
 
-@kigcmd(command='sh', filters=Filters.user(SYS_ADMIN))
+@kigcmd(command='sh', cmd_filter=filters.User(SYS_ADMIN))
 @rate_limit(40, 60)
-def shell(update: Update, context: CallbackContext):
+async def shell(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     cmd = message.text.split(" ", 1)
     if len(cmd) == 1:
-        message.reply_text("No command to execute was given.")
+        await message.reply_text("No command to execute was given.")
         return
     cmd = cmd[1]
     process = subprocess.Popen(
@@ -31,14 +32,14 @@ def shell(update: Update, context: CallbackContext):
         with open("shell_output.txt", "w") as file:
             file.write(reply)
         with open("shell_output.txt", "rb") as doc:
-            context.bot.send_document(
+            await context.bot.send_document(
                 document=doc,
                 filename=doc.name,
                 reply_to_message_id=message.message_id,
                 chat_id=message.chat_id,
             )
     else:
-        message.reply_text(reply, parse_mode=ParseMode.MARKDOWN)
+        await message.reply_text(reply, parse_mode=ParseMode.MARKDOWN)
 
 
 __mod_name__ = "Shell"

@@ -1,11 +1,10 @@
-from tg_bot import dispatcher
 from telegram import Update
-from telegram.ext import CallbackContext
+from telegram.ext import ContextTypes
 from tg_bot.modules.helper_funcs.decorators import kigcmd, rate_limit
 
 @kigcmd(command='shout')
 @rate_limit(40, 60)
-def shout(update: Update, context: CallbackContext):
+async def shout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     text = " ".join(args)
     result = [" ".join(list(text))]
@@ -15,4 +14,4 @@ def shout(update: Update, context: CallbackContext):
     result[0] = text[0]
     result = "".join(result)
     msg = "```\n" + result + "```"
-    return update.effective_message.reply_text(msg, parse_mode="MARKDOWN")
+    return await update.effective_message.reply_text(msg, parse_mode="MARKDOWN")

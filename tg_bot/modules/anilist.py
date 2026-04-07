@@ -1,13 +1,12 @@
-# module to get anime info by t.me/DragSama // find him on github :  https://github.com/DragSama // he's my doraemon btw.
 import bs4
-from telegram.ext import CallbackContext
+from telegram.ext import ContextTypes
 from telegram import (
-    ParseMode,
     Update,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     InputMediaPhoto,
 )
+from telegram.constants import ParseMode
 import requests
 from tg_bot.modules.helper_funcs.decorators import kigcmd, kigcallback, rate_limit
 from tg_bot.modules.language import gs
@@ -27,10 +26,7 @@ def shorten(description, info="anilist.co"):
     )
 
 
-# time formatter from uniborg
 def t(milliseconds: int) -> str:
-    """Inputs time in milliseconds, to get beautified time,
-    as string"""
     seconds, milliseconds = divmod(milliseconds, 1000)
     minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
@@ -218,11 +214,11 @@ url = "https://graphql.anilist.co"
 
 @kigcmd(command="airing")
 @rate_limit(messages_per_window=5, window_seconds=60)
-def airing(update: Update, context: CallbackContext):
+async def airing(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     search_str = message.text.split(" ", 1)
     if len(search_str) == 1:
-        update.effective_message.reply_text(
+        await update.effective_message.reply_text(
             "Tell Anime Name :) ( /airing <anime name>)"
         )
         return
@@ -237,15 +233,15 @@ def airing(update: Update, context: CallbackContext):
         msg += f"\n*Episode*: `{response['nextAiringEpisode']['episode']}`\n*Airing In*: `{time}`"
     else:
         msg += f"\n*Episode*:{response['episodes']}\n*Status*: `N/A`"
-    update.effective_message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+    await update.effective_message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
 @kigcmd(command="anime")
 @rate_limit(40, 60)
-def anime(update: Update, context: CallbackContext):  # sourcery no-metrics
+async def anime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     search = message.text.split(" ", 1)
     if len(search) == 1:
-        update.effective_message.reply_text("Format : /anime < anime name >")
+        await update.effective_message.reply_text("Format : /anime < anime name >")
         return
     else:
         search = search[1]
@@ -254,24 +250,22 @@ def anime(update: Update, context: CallbackContext):  # sourcery no-metrics
         url, json={"query": anime_search_query, "variables": variables}
     ).json()
     if "errors" in json.keys():
-        update.effective_message.reply_text("Anime not found")
+        await update.effective_message.reply_text("Anime not found")
         return
     media_list = json["data"]["Page"]["media"]
     if not media_list:
-        update.effective_message.reply_text("No anime found")
+        await update.effective_message.reply_text("No anime found")
         return
     if len(media_list) == 1:
-        # directly show
         anime_id = media_list[0]["id"]
         variables = {"id": anime_id}
         json = requests.post(
             url, json={"query": anime_query, "variables": variables}
         ).json()
         if "errors" in json.keys():
-            update.effective_message.reply_text("Anime not found")
+            await update.effective_message.reply_text("Anime not found")
             return
         json = json["data"]["Media"]
-        # then the rest of the code
         msg = f"*{json['title']['romaji']}*(`{json['title']['native']}`)\n*Type*: {json['format']}\n*Status*: {json['status']}\n*Episodes*: {json.get('episodes', 'N/A')}\n*Duration*: {json.get('duration', 'N/A')} Per Ep.\n*Score*: {json['averageScore']}\n*Genres*: `"
         for x in json["genres"]:
             msg += f"{x}, "
@@ -297,28 +291,28 @@ def anime(update: Update, context: CallbackContext):  # sourcery no-metrics
             buttons = [
                 [
                     InlineKeyboardButton("More Info", url=info),
-                    InlineKeyboardButton("Trailer 🎬", url=trailer),
+                    InlineKeyboardButton("Trailer \ud83c\udfac", url=trailer),
                 ]
             ]
         else:
             buttons = [[InlineKeyboardButton("More Info", url=info)]]
         if image:
             try:
-                update.effective_message.reply_photo(
+                await update.effective_message.reply_photo(
                     photo=image,
                     caption=msg,
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=InlineKeyboardMarkup(buttons),
                 )
             except Exception:
-                msg += f" [〽️]({image})"
-                update.effective_message.reply_text(
+                msg += f" [\u303d\ufe0f]({image})"
+                await update.effective_message.reply_text(
                     msg,
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=InlineKeyboardMarkup(buttons),
                 )
         else:
-            update.effective_message.reply_text(
+            await update.effective_message.reply_text(
                 msg,
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=InlineKeyboardMarkup(buttons),
@@ -332,18 +326,18 @@ def anime(update: Update, context: CallbackContext):  # sourcery no-metrics
             score = media.get("averageScore", "N/A")
             button_text = f"{title} ({year}) [{status}]"
             buttons.append([InlineKeyboardButton(button_text, callback_data=f"anilist_anime_{media['id']}_{update.effective_user.id}")])
-        update.effective_message.reply_text(
+        await update.effective_message.reply_text(
             "Select an anime:",
             reply_markup=InlineKeyboardMarkup(buttons),
         )
 
 @kigcmd(command="character")
 @rate_limit(40, 60)
-def character(update: Update, context: CallbackContext):
+async def character(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     search = message.text.split(" ", 1)
     if len(search) == 1:
-        update.effective_message.reply_text("Format : /character < character name >")
+        await update.effective_message.reply_text("Format : /character < character name >")
         return
     search = search[1]
     variables = {"query": search}
@@ -351,21 +345,20 @@ def character(update: Update, context: CallbackContext):
         url, json={"query": character_search_query, "variables": variables}
     ).json()
     if "errors" in json.keys():
-        update.effective_message.reply_text("Character not found")
+        await update.effective_message.reply_text("Character not found")
         return
     char_list = json["data"]["Page"]["characters"]
     if not char_list:
-        update.effective_message.reply_text("No character found")
+        await update.effective_message.reply_text("No character found")
         return
     if len(char_list) == 1:
-        # directly show
         char_id = char_list[0]["id"]
         variables = {"id": char_id}
         json = requests.post(
             url, json={"query": character_query, "variables": variables}
         ).json()
         if "errors" in json.keys():
-            update.effective_message.reply_text("Character not found")
+            await update.effective_message.reply_text("Character not found")
             return
         json = json["data"]["Character"]
         msg = f"*{json.get('name').get('full')}*(`{json.get('name').get('native')}`)\n"
@@ -374,13 +367,13 @@ def character(update: Update, context: CallbackContext):
         msg += shorten(description, site_url)
         if image := json.get("image", None):
             image = image.get("large")
-            update.effective_message.reply_photo(
+            await update.effective_message.reply_photo(
                 photo=image,
                 caption=msg.replace("<b>", "</b>"),
                 parse_mode=ParseMode.MARKDOWN,
             )
         else:
-            update.effective_message.reply_text(
+            await update.effective_message.reply_text(
                 msg.replace("<b>", "</b>"), parse_mode=ParseMode.MARKDOWN
             )
     else:
@@ -388,18 +381,18 @@ def character(update: Update, context: CallbackContext):
         for char in char_list:
             name = char["name"]["full"] or f"{char['name']['first']} {char['name']['last']}"
             buttons.append([InlineKeyboardButton(name, callback_data=f"anilist_char_{char['id']}_{update.effective_user.id}")])
-        update.effective_message.reply_text(
+        await update.effective_message.reply_text(
             "Select a character:",
             reply_markup=InlineKeyboardMarkup(buttons),
         )
 
 @kigcmd(command="manga")
 @rate_limit(40, 60)
-def manga(update: Update, context: CallbackContext):
+async def manga(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     search = message.text.split(" ", 1)
     if len(search) == 1:
-        update.effective_message.reply_text("Format : /manga < manga name >")
+        await update.effective_message.reply_text("Format : /manga < manga name >")
         return
     search = search[1]
     variables = {"search": search}
@@ -407,21 +400,20 @@ def manga(update: Update, context: CallbackContext):
         url, json={"query": manga_search_query, "variables": variables}
     ).json()
     if "errors" in json.keys():
-        update.effective_message.reply_text("Manga not found")
+        await update.effective_message.reply_text("Manga not found")
         return
     media_list = json["data"]["Page"]["media"]
     if not media_list:
-        update.effective_message.reply_text("No manga found")
+        await update.effective_message.reply_text("No manga found")
         return
     if len(media_list) == 1:
-        # directly show
         manga_id = media_list[0]["id"]
         variables = {"id": manga_id}
         json = requests.post(
             url, json={"query": manga_query, "variables": variables}
         ).json()
         if "errors" in json.keys():
-            update.effective_message.reply_text("Manga not found")
+            await update.effective_message.reply_text("Manga not found")
             return
         json = json["data"]["Media"]
         msg = ""
@@ -453,21 +445,21 @@ def manga(update: Update, context: CallbackContext):
         msg += f"_{bs4.BeautifulSoup(json.get('description', None), features='html.parser').text}_"
         if image:
             try:
-                update.effective_message.reply_photo(
+                await update.effective_message.reply_photo(
                     photo=image,
                     caption=msg,
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=InlineKeyboardMarkup(buttons),
                 )
             except Exception:
-                msg += f" [〽️]({image})"
-                update.effective_message.reply_text(
+                msg += f" [\u303d\ufe0f]({image})"
+                await update.effective_message.reply_text(
                     msg,
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=InlineKeyboardMarkup(buttons),
                 )
         else:
-            update.effective_message.reply_text(
+            await update.effective_message.reply_text(
                 msg,
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=InlineKeyboardMarkup(buttons),
@@ -481,29 +473,29 @@ def manga(update: Update, context: CallbackContext):
             score = media.get("averageScore", "N/A")
             button_text = f"{title} ({year}) [{status}]"
             buttons.append([InlineKeyboardButton(button_text, callback_data=f"anilist_manga_{media['id']}_{update.effective_user.id}")])
-        update.effective_message.reply_text(
+        await update.effective_message.reply_text(
             "Select a manga:",
             reply_markup=InlineKeyboardMarkup(buttons),
         )
 
 
 @kigcallback(pattern=r"anilist_anime_(\d+)_(\d+)")
-def anime_callback(update: Update, context: CallbackContext):
+async def anime_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    query.answer()
+    await query.answer()
     data = query.data
     parts = data.split('_')
     anime_id = int(parts[2])
     user_id = int(parts[3])
     if query.from_user.id != user_id:
-        query.edit_message_text("This selection is not for you!")
+        await query.edit_message_text("This selection is not for you!")
         return
     variables = {"id": anime_id}
     json = requests.post(
         url, json={"query": anime_query, "variables": variables}
     ).json()
     if "errors" in json.keys():
-        query.edit_message_text("Anime not found")
+        await query.edit_message_text("Anime not found")
         return
     json = json["data"]["Media"]
     msg = f"*{json['title']['romaji']}*(`{json['title']['native']}`)\n*Type*: {json['format']}\n*Status*: {json['status']}\n*Episodes*: {json.get('episodes', 'N/A')}\n*Duration*: {json.get('duration', 'N/A')} Per Ep.\n*Score*: {json['averageScore']}\n*Genres*: `"
@@ -530,26 +522,26 @@ def anime_callback(update: Update, context: CallbackContext):
         buttons = [
             [
                 InlineKeyboardButton("More Info", url=info),
-                InlineKeyboardButton("Trailer 🎬", url=trailer),
+                InlineKeyboardButton("Trailer \ud83c\udfac", url=trailer),
             ]
         ]
     else:
         buttons = [[InlineKeyboardButton("More Info", url=info)]]
     if image:
         try:
-            query.edit_message_media(
+            await query.edit_message_media(
                 media=InputMediaPhoto(image, caption=msg, parse_mode=ParseMode.MARKDOWN),
                 reply_markup=InlineKeyboardMarkup(buttons),
             )
         except Exception:
-            msg += f" [〽️]({image})"
-            query.edit_message_text(
+            msg += f" [\u303d\ufe0f]({image})"
+            await query.edit_message_text(
                 msg,
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=InlineKeyboardMarkup(buttons),
             )
     else:
-        query.edit_message_text(
+        await query.edit_message_text(
             msg,
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup(buttons),
@@ -557,22 +549,22 @@ def anime_callback(update: Update, context: CallbackContext):
 
 
 @kigcallback(pattern=r"anilist_char_(\d+)_(\d+)")
-def character_callback(update: Update, context: CallbackContext):
+async def character_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    query.answer()
+    await query.answer()
     data = query.data
     parts = data.split('_')
     char_id = int(parts[2])
     user_id = int(parts[3])
     if query.from_user.id != user_id:
-        query.edit_message_text("This selection is not for you!")
+        await query.edit_message_text("This selection is not for you!")
         return
     variables = {"id": char_id}
     json = requests.post(
         url, json={"query": character_query, "variables": variables}
     ).json()
     if "errors" in json.keys():
-        query.edit_message_text("Character not found")
+        await query.edit_message_text("Character not found")
         return
     json = json["data"]["Character"]
     msg = f"*{json.get('name').get('full')}*(`{json.get('name').get('native')}`)\n"
@@ -582,33 +574,33 @@ def character_callback(update: Update, context: CallbackContext):
     image = json.get("image", None)
     if image:
         image = image.get("large")
-        query.edit_message_media(
+        await query.edit_message_media(
             media=InputMediaPhoto(image, caption=msg.replace("<b>", "</b>"), parse_mode=ParseMode.MARKDOWN),
         )
     else:
-        query.edit_message_text(
+        await query.edit_message_text(
             msg.replace("<b>", "</b>"), parse_mode=ParseMode.MARKDOWN
         )
 
 
 @kigcallback(pattern=r"anilist_manga_(\d+)_(\d+)")
-def manga_callback(update: Update, context: CallbackContext):
+async def manga_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     chat_id = update.effective_chat.id
-    query.answer()
+    await query.answer()
     data = query.data
     parts = data.split('_')
     manga_id = int(parts[2])
     user_id = int(parts[3])
     if query.from_user.id != user_id:
-        query.edit_message_text("This selection is not for you!")
+        await query.edit_message_text("This selection is not for you!")
         return
     variables = {"id": manga_id}
     json = requests.post(
         url, json={"query": manga_query, "variables": variables}
     ).json()
     if "errors" in json.keys():
-        query.edit_message_text("Manga not found")
+        await query.edit_message_text("Manga not found")
         return
     json = json["data"]["Media"]
     msg = ""
@@ -640,19 +632,19 @@ def manga_callback(update: Update, context: CallbackContext):
     msg += f"_{bs4.BeautifulSoup(json.get('description', None), features='html.parser').text}_"
     if image:
         try:
-            query.edit_message_media(
+            await query.edit_message_media(
                 media=InputMediaPhoto(image, caption=msg, parse_mode=ParseMode.MARKDOWN),
                 reply_markup=InlineKeyboardMarkup(buttons),
             )
         except Exception:
-            msg += f" [〽️]({image})"
-            query.edit_message_text(
+            msg += f" [\u303d\ufe0f]({image})"
+            await query.edit_message_text(
                 msg,
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=InlineKeyboardMarkup(buttons),
             )
     else:
-        query.edit_message_text(
+        await query.edit_message_text(
             msg,
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup(buttons),

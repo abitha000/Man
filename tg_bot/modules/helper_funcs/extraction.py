@@ -19,18 +19,18 @@ def id_from_reply(message):
     return user_id, res[1]
 
 
-def extract_user(message: Message, args: List[str]) -> Optional[int]:
-    return extract_user_and_text(message, args)[0]
+async def extract_user(message: Message, args: List[str]) -> Optional[int]:
+    return (await extract_user_and_text(message, args))[0]
 
 
-def extract_user_and_text(
+async def extract_user_and_text(
     message: Message, args: List[str]
 ) -> Tuple[Optional[int], Optional[str]]:
     prev_message = message.reply_to_message
     split_text = message.text.split(None, 1)
 
     if len(split_text) < 2:
-        return id_from_reply(message)  # only option possible
+        return id_from_reply(message)
 
     text_to_parse = split_text[1]
 
@@ -38,7 +38,6 @@ def extract_user_and_text(
 
     entities = list(message.parse_entities([MessageEntity.TEXT_MENTION]))
     ent = entities[0] if entities else None
-    # if entity offset matches (command end/text start) then all good
     if entities and ent and ent.offset == len(message.text) - len(text_to_parse):
         ent = entities[0]
         user_id = ent.user.id
@@ -48,7 +47,7 @@ def extract_user_and_text(
         user = args[0]
         user_id = get_user_id(user)
         if not user_id:
-            message.reply_text(
+            await message.reply_text(
                 "No idea who this user is. You'll be able to interact with them if "
                 "you reply to that person's message instead, or forward one of that user's messages."
             )
@@ -73,10 +72,10 @@ def extract_user_and_text(
         return None, None
 
     try:
-        message.bot.get_chat(user_id)
+        await message.get_bot().get_chat(user_id)
     except BadRequest as excp:
         if excp.message in ("User_id_invalid", "Chat not found"):
-            message.reply_text(
+            await message.reply_text(
                 "I don't seem to have interacted with this user before - please forward a message from "
                 "them to give me control! (like a voodoo doll, I need a piece of them to be able "
                 "to execute certain commands...)"
@@ -97,14 +96,14 @@ def extract_text(message) -> str:
     )
 
 
-def extract_unt_fedban(
+async def extract_unt_fedban(
     message: Message, args: List[str]
-) -> Tuple[Optional[int], Optional[str]]:  # sourcery no-metrics
+) -> Tuple[Optional[int], Optional[str]]:
     prev_message = message.reply_to_message
     split_text = message.text.split(None, 1)
 
     if len(split_text) < 2:
-        return id_from_reply(message)  # only option possible
+        return id_from_reply(message)
 
     text_to_parse = split_text[1]
 
@@ -112,7 +111,6 @@ def extract_unt_fedban(
 
     entities = list(message.parse_entities([MessageEntity.TEXT_MENTION]))
     ent = entities[0] if entities else None
-    # if entity offset matches (command end/text start) then all good
     if entities and ent and ent.offset == len(message.text) - len(text_to_parse):
         ent = entities[0]
         user_id = ent.user.id
@@ -122,7 +120,7 @@ def extract_unt_fedban(
         user = args[0]
         user_id = get_user_id(user)
         if not user_id and not isinstance(user_id, int):
-            message.reply_text(
+            await message.reply_text(
                 "I don't have users on my DB.You will be able to interact with them if "
                 "you reply to the person's message, or forward one of the user's message"
             )
@@ -147,12 +145,12 @@ def extract_unt_fedban(
         return None, None
 
     try:
-        message.bot.get_chat(user_id)
+        await message.get_bot().get_chat(user_id)
     except BadRequest as excp:
         if excp.message in ("User_id_invalid", "Chat not found") and not isinstance(
             user_id, int
         ):
-            message.reply_text(
+            await message.reply_text(
                 "I seem to have never interacted with this user "
                 "Previously - please forward a message from them to give me control! "
                 "(Like a voodoo doll, I need a piece to be able to "
@@ -168,5 +166,5 @@ def extract_unt_fedban(
     return user_id, text
 
 
-def extract_user_fban(message: Message, args: List[str]) -> Optional[int]:
-    return extract_unt_fedban(message, args)[0]
+async def extract_user_fban(message: Message, args: List[str]) -> Optional[int]:
+    return (await extract_unt_fedban(message, args))[0]

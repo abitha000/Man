@@ -5,7 +5,7 @@ from sqlalchemy.sql.sqltypes import BigInteger
 from sqlalchemy.exc import DataError
 from telegram.error import BadRequest, Unauthorized
 
-from tg_bot import dispatcher
+import tg_bot
 from tg_bot.modules.sql import SESSION, BASE
 
 
@@ -509,7 +509,7 @@ def fban_user(fed_id, user_id, first_name, last_name, user_name, reason, time):
         SESSION.add(r)
         try:
             SESSION.commit()
-        except:
+        except Exception:
             SESSION.rollback()
             return False
         finally:
@@ -561,7 +561,7 @@ def multi_fban_user(
                 print(counter)
         try:
             SESSION.commit()
-        except:
+        except Exception:
             SESSION.rollback()
             return False
         finally:
@@ -580,7 +580,7 @@ def un_fban_user(fed_id, user_id):
                     SESSION.delete(I)
         try:
             SESSION.commit()
-        except:
+        except Exception:
             SESSION.rollback()
             return False
         finally:
@@ -688,7 +688,7 @@ def get_fed_log(fed_id):
         return False
     elif fed_setting.get("flog"):
         try:
-            dispatcher.bot.get_chat(fed_setting.get("flog"))
+            tg_bot.application.bot.get_chat(fed_setting.get("flog"))
         except BadRequest:
             set_fed_log(fed_id, None)
             return False

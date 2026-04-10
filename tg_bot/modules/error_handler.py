@@ -1,3 +1,4 @@
+import asyncio
 import traceback
 import html
 import random
@@ -49,7 +50,9 @@ async def error_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     tb = "".join(tb_list)
     pretty_message = f'An exception was raised while handling an update\nUser: {update.effective_user.id if update.effective_user else update.effective_message.sender_chat.id}\nChat: {update.effective_chat.title if update.effective_chat else ""} {update.effective_chat.id if update.effective_chat else ""}\nCallback data: {update.callback_query.data if update.callback_query else "None"}\nMessage: {update.effective_message.text if update.effective_message else "No message"}\n\nFull Traceback: {tb}'
-    paste_url = upload_text(pretty_message)
+    paste_url = await asyncio.get_running_loop().run_in_executor(
+        None, upload_text, pretty_message
+    )
 
 
     if not paste_url:

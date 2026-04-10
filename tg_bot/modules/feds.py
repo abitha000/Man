@@ -8,7 +8,7 @@ import csv
 import os
 import ast
 from telegram.ext import ContextTypes
-from telegram.error import BadRequest, TelegramError, Unauthorized
+from telegram.error import BadRequest, TelegramError, Forbidden
 from telegram import (
     Update,
     Chat,
@@ -248,7 +248,7 @@ async def join_fed(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text("Failed to join federation!")
             return
 
-        get_fedlog = sql.get_fed_log(args[0])
+        get_fedlog = await sql.get_fed_log(args[0])
         if get_fedlog:
             if ast.literal_eval(get_fedlog):
                 await context.bot.send_message(
@@ -284,7 +284,7 @@ async def leave_fed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     getuser = (await context.bot.get_chat_member(chat.id, user.id)).status
     if getuser in "creator" or user.id in SUDO_USERS:
         if sql.chat_leave_fed(chat.id) is True:
-            get_fedlog = sql.get_fed_log(fed_id)
+            get_fedlog = await sql.get_fed_log(fed_id)
             if get_fedlog:
                 if ast.literal_eval(get_fedlog):
                     await context.bot.send_message(
@@ -694,7 +694,7 @@ async def fed_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ),
                 parse_mode="HTML",
             )
-        get_fedlog = sql.get_fed_log(fed_id)
+        get_fedlog = await sql.get_fed_log(fed_id)
         if get_fedlog:
             if int(get_fedlog) != int(chat.id):
                 await context.bot.send_message(
@@ -722,7 +722,7 @@ async def fed_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if excp.message in FBAN_ERRORS:
                     try:
                         await tg_bot.application.bot.get_chat(fedschat)
-                    except Unauthorized:
+                    except Forbidden:
                         sql.chat_leave_fed(fedschat)
                         log.info(
                             "Chat {} has leave fed {} because I was kicked".format(
@@ -750,7 +750,7 @@ async def fed_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if excp.message in FBAN_ERRORS:
                             try:
                                 await tg_bot.application.bot.get_chat(fedschat)
-                            except Unauthorized:
+                            except Forbidden:
                                 targetfed_id = sql.get_fed_id(fedschat)
                                 sql.unsubs_fed(fed_id, targetfed_id)
                                 log.info(
@@ -831,9 +831,9 @@ async def fed_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ),
                 parse_mode="HTML",
             )
-        except Unauthorized:
+        except Forbidden:
             pass
-    get_fedlog = sql.get_fed_log(fed_id)
+    get_fedlog = await sql.get_fed_log(fed_id)
     if get_fedlog:
         if int(get_fedlog) != int(chat.id):
             try:
@@ -855,7 +855,7 @@ async def fed_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ),
                     parse_mode="HTML",
                 )
-            except Unauthorized:
+            except Forbidden:
                 pass
     chats_in_fed = 0
     for fedschat in fed_chats:
@@ -885,7 +885,7 @@ async def fed_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if excp.message in FBAN_ERRORS:
                             try:
                                 await tg_bot.application.bot.get_chat(fedschat)
-                            except Unauthorized:
+                            except Forbidden:
                                 targetfed_id = sql.get_fed_id(fedschat)
                                 sql.unsubs_fed(fed_id, targetfed_id)
                                 log.info(
@@ -1018,7 +1018,7 @@ async def unfban(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
             parse_mode="HTML",
         )
-    get_fedlog = sql.get_fed_log(fed_id)
+    get_fedlog = await sql.get_fed_log(fed_id)
     if get_fedlog:
         if int(get_fedlog) != int(chat.id):
             await context.bot.send_message(
@@ -1078,7 +1078,7 @@ async def unfban(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if excp.message in FBAN_ERRORS:
                         try:
                             await tg_bot.application.bot.get_chat(fedschat)
-                        except Unauthorized:
+                        except Forbidden:
                             targetfed_id = sql.get_fed_id(fedschat)
                             sql.unsubs_fed(fed_id, targetfed_id)
                             log.info(
@@ -1153,7 +1153,7 @@ async def set_frules(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         rules = sql.get_fed_info(fed_id)["frules"]
         getfed = sql.get_fed_info(fed_id)
-        get_fedlog = sql.get_fed_log(fed_id)
+        get_fedlog = await sql.get_fed_log(fed_id)
         if get_fedlog:
             if ast.literal_eval(get_fedlog):
                 await context.bot.send_message(
@@ -1233,7 +1233,7 @@ async def fed_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except TelegramError:
                 try:
                     await tg_bot.application.bot.get_chat(chat)
-                except Unauthorized:
+                except Forbidden:
                     failed += 1
                     sql.chat_leave_fed(chat)
                     log.info(
@@ -1511,7 +1511,7 @@ async def fed_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for chats in getlist:
         try:
             chat_name = (await tg_bot.application.bot.get_chat(chats)).title
-        except Unauthorized:
+        except Forbidden:
             sql.chat_leave_fed(chats)
             log.info(
                 "Chat {} has leave fed {} because I was kicked".format(
@@ -1665,7 +1665,7 @@ async def fed_import_bans(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             if failed >= 1:
                 text += " {} Failed to import.".format(failed)
-            get_fedlog = sql.get_fed_log(fed_id)
+            get_fedlog = await sql.get_fed_log(fed_id)
             if get_fedlog:
                 if ast.literal_eval(get_fedlog):
                     teks = "Fed *{}* has successfully imported data. {} banned.".format(
@@ -1738,7 +1738,7 @@ async def fed_import_bans(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = "Files were imported successfully. {} people banned.".format(success)
             if failed >= 1:
                 text += " {} Failed to import.".format(failed)
-            get_fedlog = sql.get_fed_log(fed_id)
+            get_fedlog = await sql.get_fed_log(fed_id)
             if get_fedlog:
                 if ast.literal_eval(get_fedlog):
                     teks = "Fed *{}* has successfully imported data. {} banned.".format(
@@ -2015,7 +2015,7 @@ async def subs_feds(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ),
                 parse_mode="markdown",
             )
-            get_fedlog = sql.get_fed_log(args[0])
+            get_fedlog = await sql.get_fed_log(args[0])
             if get_fedlog:
                 if int(get_fedlog) != int(chat.id):
                     await context.bot.send_message(
@@ -2083,7 +2083,7 @@ async def unsubs_feds(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ),
                 parse_mode="markdown",
             )
-            get_fedlog = sql.get_fed_log(args[0])
+            get_fedlog = await sql.get_fed_log(args[0])
             if get_fedlog:
                 if int(get_fedlog) != int(chat.id):
                     await context.bot.send_message(

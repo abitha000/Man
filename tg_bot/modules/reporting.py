@@ -6,7 +6,7 @@ from tg_bot.modules.log_channel import loggable
 from tg_bot.modules.sql import reporting_sql as sql
 from telegram import Chat, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
-from telegram.error import BadRequest, Unauthorized
+from telegram.error import BadRequest, Forbidden
 from telegram.ext import (
     ContextTypes,
     filters,
@@ -211,7 +211,7 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
                             ):
                                 await message.forward(admin.user.id)
 
-                except Unauthorized:
+                except Forbidden:
                     pass
                 except BadRequest as excp:
                     log.exception("Exception while reporting user\n{}".format(excp))

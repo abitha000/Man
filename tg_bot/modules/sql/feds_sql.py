@@ -3,7 +3,7 @@ import ast
 from sqlalchemy import Column, String, UnicodeText, Integer, Boolean
 from sqlalchemy.sql.sqltypes import BigInteger
 from sqlalchemy.exc import DataError
-from telegram.error import BadRequest, Unauthorized
+from telegram.error import BadRequest, Forbidden
 
 import tg_bot
 from tg_bot.modules.sql import SESSION, BASE
@@ -357,18 +357,6 @@ def user_demote_fed(fed_id, user_id):
         SESSION.commit()
         return True
 
-        curr = SESSION.query(UserF).all()
-        result = False
-        for r in curr:
-            if int(r.user_id) == int(user_id):
-                if r.fed_id == fed_id:
-                    SESSION.delete(r)
-                    SESSION.commit()
-                    result = True
-
-        SESSION.close()
-        return result
-
 
 def user_join_fed(fed_id, user_id):
     with FEDS_LOCK:
@@ -512,8 +500,6 @@ def fban_user(fed_id, user_id, first_name, last_name, user_name, reason, time):
         except Exception:
             SESSION.rollback()
             return False
-        finally:
-            SESSION.commit()
         __load_all_feds_banned()
         return r
 
@@ -526,7 +512,7 @@ def multi_fban_user(
     multi_user_name,
     multi_reason,
 ):
-    if True:  # with FEDS_LOCK:
+    with FEDS_LOCK:
         counter = 0
         time = 0
         for x in range(len(multi_fed_id)):
@@ -564,8 +550,6 @@ def multi_fban_user(
         except Exception:
             SESSION.rollback()
             return False
-        finally:
-            SESSION.commit()
         __load_all_feds_banned()
         print("Done")
         return counter
@@ -583,8 +567,6 @@ def un_fban_user(fed_id, user_id):
         except Exception:
             SESSION.rollback()
             return False
-        finally:
-            SESSION.commit()
         __load_all_feds_banned()
         return I
 
@@ -679,7 +661,7 @@ def set_feds_setting(user_id: int, setting: bool):
             # The setting is still stored in FEDERATION_NOTIFICATION
 
 
-def get_fed_log(fed_id):
+async def get_fed_log(fed_id):
     fed_setting = FEDERATION_BYFEDID.get(str(fed_id))
     if fed_setting == None:
         fed_setting = False
@@ -688,11 +670,11 @@ def get_fed_log(fed_id):
         return False
     elif fed_setting.get("flog"):
         try:
-            tg_bot.application.bot.get_chat(fed_setting.get("flog"))
+            await tg_bot.application.bot.get_chat(fed_setting.get("flog"))
         except BadRequest:
             set_fed_log(fed_id, None)
             return False
-        except Unauthorized:
+        except Forbidden:
             set_fed_log(fed_id, None)
             return False
         return fed_setting.get("flog")
@@ -757,7 +739,6 @@ def unsubs_fed(fed_id, my_fed):
             SESSION.commit()
             return True
 
-        SESSION.close()
         return False
 
 

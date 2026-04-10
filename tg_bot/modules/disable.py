@@ -98,7 +98,7 @@ if is_module_loaded(FILENAME):
         user = update.effective_user
         args = context.args
 
-        conn = connected(context.bot, update, chat, user.id, need_admin=True)
+        conn = await connected(context.bot, update, chat, user.id, need_admin=True)
         if conn:
             chat = await context.bot.get_chat(conn)
             chat_name = chat.title
@@ -143,7 +143,7 @@ if is_module_loaded(FILENAME):
         user = update.effective_user
         args = context.args
 
-        conn = connected(context.bot, update, chat, user.id, need_admin=True)
+        conn = await connected(context.bot, update, chat, user.id, need_admin=True)
         if conn:
             chat = await context.bot.get_chat(conn)
             chat_id = conn
@@ -210,7 +210,7 @@ if is_module_loaded(FILENAME):
     async def commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat = update.effective_chat
         user = update.effective_user
-        conn = connected(context.bot, update, chat, user.id, need_admin=True)
+        conn = await connected(context.bot, update, chat, user.id, need_admin=True)
         if conn:
             chat = await context.bot.get_chat(conn)
             chat_id = conn

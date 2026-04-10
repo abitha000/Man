@@ -3,7 +3,7 @@ import re
 
 from telegram.constants import ParseMode
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update, Bot
-from telegram.error import BadRequest, Unauthorized
+from telegram.error import BadRequest, Forbidden
 from telegram.ext import (
     CommandHandler,
     CallbackQueryHandler,
@@ -242,7 +242,7 @@ async def connect_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 except BadRequest:
                     pass
-                except Unauthorized:
+                except Forbidden:
                     pass
             else:
                 await send_message(update.effective_message, "Connection failed!")

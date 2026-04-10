@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import logging
 import re
@@ -5,13 +6,7 @@ from typing import Optional
 
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.constants import ParseMode
-from telegram.error import (
-    TelegramError,
-    BadRequest,
-    TimedOut,
-    NetworkError,
-    Forbidden,
-)
+from telegram.error import BadRequest
 from telegram.ext import ApplicationHandlerStop, ContextTypes, filters
 from telegram.helpers import escape_markdown
 
@@ -25,6 +20,7 @@ from tg_bot import (
     PORT,
     URL,
     KigyoINIT,
+    log,
 )
 from tg_bot.modules import ALL_MODULES
 from tg_bot.modules.helper_funcs.chat_status import is_user_admin
@@ -265,16 +261,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def error_callback(update: object, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        raise context.error
-    except (Forbidden, BadRequest):
-        pass
-    except TimedOut:
-        pass
-    except NetworkError:
-        pass
-    except TelegramError:
-        pass
+    log.exception(
+        "Unhandled exception while processing update %s",
+        update,
+        exc_info=context.error,
+    )
 
 
 @kigcallback(pattern=r"help_")
@@ -617,6 +608,28 @@ async def migrate_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raise ApplicationHandlerStop
 
 
+async def _post_init(app):
+    from tg_bot.modules.sql.users_sql import ensure_bot_in_db
+    await asyncio.get_running_loop().run_in_executor(None, ensure_bot_in_db)
+
+
+async def _post_shutdown(app):
+    from tg_bot.http_client import http
+    from tg_bot import redis_client, redis_pool
+    try:
+        await http.aclose()
+    except Exception:
+        log.exception("Failed to close httpx client")
+    try:
+        await redis_client.aclose()
+    except Exception:
+        log.exception("Failed to close redis client")
+    try:
+        await redis_pool.disconnect()
+    except Exception:
+        log.exception("Failed to disconnect redis pool")
+
+
 def main():
     from telegram.ext import Application
     from tg_bot.modules.helper_funcs.decorators import kigyo_handler
@@ -628,7 +641,8 @@ def main():
         .base_file_url(KInit.BOT_API_FILE_URL)
         .read_timeout(10)
         .connect_timeout(10)
-        .concurrent_updates(True)
+        .post_init(_post_init)
+        .post_shutdown(_post_shutdown)
         .build()
     )
 

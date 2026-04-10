@@ -172,7 +172,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
         res = sql.remove_warn(user_id, chat.id)
         if res:
             await update.effective_message.edit_text(
-                f'Warn removed by {"anon admin" if is_anon(user, chat) else mention_html(user.id, user.first_name)}.',
+                f'Warn removed by {"anon admin" if await is_anon(user, chat) else mention_html(user.id, user.first_name)}.',
                 parse_mode=ParseMode.HTML,
             )
             user_member = await chat.get_member(user_id)

@@ -13,7 +13,6 @@ from sqlalchemy import (
     func,
 )
 
-from tg_bot.modules.sql.cache_utils import cached, clear_cache, invalidate_cache_pattern
 
 
 class Users(BASE):
@@ -122,7 +121,6 @@ def update_user(user_id, username, chat_id=None, chat_name=None):
         invalidate_chat_cache(chat_id)
 
 
-@cached(ttl=300)
 def get_userid_by_name(username):
     return [
         user.user_id
@@ -132,13 +130,11 @@ def get_userid_by_name(username):
     ]
 
 
-@cached(ttl=300)
 def get_name_by_userid(user_id):
     user = SESSION.query(Users).filter(Users.user_id == int(user_id)).first()
     return user.username if user else None
 
 
-@cached(ttl=300)
 def get_chat_members(chat_id):
     return [
         member.user
@@ -148,22 +144,18 @@ def get_chat_members(chat_id):
     ]
 
 
-@cached(ttl=300)
 def get_all_chats():
     return [chat.chat_id for chat in SESSION.query(Chats).all()]
 
 
-@cached(ttl=300)
 def get_all_users():
     return [user.user_id for user in SESSION.query(Users).all()]
 
 
-@cached(ttl=300)
 def get_user_num_chats(user_id):
     return SESSION.query(ChatMembers).filter(ChatMembers.user == int(user_id)).count()
 
 
-@cached(ttl=300)
 def get_user_com_chats(user_id):
     chat_members = (
         SESSION.query(ChatMembers).filter(ChatMembers.user == int(user_id)).all()
@@ -171,12 +163,10 @@ def get_user_com_chats(user_id):
     return [member.chat for member in chat_members]
 
 
-@cached(ttl=300)
 def num_chats():
     return SESSION.query(Chats).count()
 
 
-@cached(ttl=300)
 def num_users():
     return SESSION.query(Users).count()
 
@@ -204,9 +194,6 @@ def migrate_chat(old_chat_id, new_chat_id):
         invalidate_chat_cache(new_chat_id)
 
 
-ensure_bot_in_db()
-
-
 def del_user(user_id):
     with INSERTION_LOCK:
         curr = SESSION.query(Users).get(user_id)
@@ -229,17 +216,18 @@ def rem_chat(chat_id):
             SESSION.delete(chat)
             SESSION.commit()
             invalidate_chat_cache(chat_id)
-        else:
-            SESSION.close()
 
 
 def invalidate_user_cache(user_id):
-    invalidate_cache_pattern(f"*:{user_id}:*")
+    # No-op: the @cached decorator was removed pending a real cache implementation.
+    pass
 
 
 def invalidate_chat_cache(chat_id):
-    invalidate_cache_pattern(f"*:{chat_id}:*")
+    # No-op: the @cached decorator was removed pending a real cache implementation.
+    pass
 
 
 def invalidate_all_cache():
-    clear_cache()
+    # No-op: the @cached decorator was removed pending a real cache implementation.
+    pass

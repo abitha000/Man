@@ -379,7 +379,7 @@ def user_can_ban(func):
 def connection_status(func):
     @wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        conn = connected(
+        conn = await connected(
             context.bot,
             update,
             update.effective_chat,
@@ -396,7 +396,7 @@ def connection_status(func):
                 await update.effective_message.reply_text(
                     "Send /connect in a group that you and I have in common first."
                 )
-                return wrapper
+                return None
 
             return await func(update, context, *args, **kwargs)
     return wrapper

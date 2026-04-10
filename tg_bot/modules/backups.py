@@ -34,7 +34,7 @@ async def import_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
 
-    conn = connected(context.bot, update, chat, user.id, need_admin=True)
+    conn = await connected(context.bot, update, chat, user.id, need_admin=True)
     if conn:
         chat = await context.bot.get_chat(conn)
         chat_name = chat.title
@@ -121,7 +121,7 @@ async def export_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     chat = update.effective_chat
     current_chat_id = update.effective_chat.id
-    conn = connected(context.bot, update, chat, user.id, need_admin=True)
+    conn = await connected(context.bot, update, chat, user.id, need_admin=True)
     if conn:
         chat = await context.bot.get_chat(conn)
         chat_id = conn

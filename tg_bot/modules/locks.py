@@ -149,13 +149,13 @@ async def lock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
     user = update.effective_user
 
     if (
-            can_delete(chat, context.bot.id)
+            await can_delete(chat, context.bot.id, context)
             or update.effective_message.chat.type == "private"
     ):
         if len(args) >= 1:
             ltype = args[0].lower()
             if ltype in LOCK_TYPES:
-                conn = connected(context.bot, update, chat, user.id, need_admin=True)
+                conn = await connected(context.bot, update, chat, user.id, need_admin=True)
                 if conn:
                     chat = await context.bot.get_chat(conn)
                     chat_name = chat.title
@@ -184,7 +184,7 @@ async def lock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
                 )
 
             elif ltype in LOCK_CHAT_RESTRICTION:
-                conn = connected(context.bot, update, chat, user.id, need_admin=True)
+                conn = await connected(context.bot, update, chat, user.id, need_admin=True)
                 if conn:
                     chat = await context.bot.get_chat(conn)
                     chat_id = conn
@@ -253,7 +253,7 @@ async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
     if len(args) >= 1:
         ltype = args[0].lower()
         if ltype in LOCK_TYPES:
-            conn = connected(context.bot, update, chat, user.id, need_admin=True)
+            conn = await connected(context.bot, update, chat, user.id, need_admin=True)
             if conn:
                 chat = await context.bot.get_chat(conn)
                 chat_name = chat.title
@@ -281,7 +281,7 @@ async def unlock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str:
             )
 
         elif ltype in UNLOCK_CHAT_RESTRICTION:
-            conn = connected(context.bot, update, chat, user.id, need_admin=True)
+            conn = await connected(context.bot, update, chat, user.id, need_admin=True)
             if conn:
                 chat = await context.bot.get_chat(conn)
                 chat_id = conn
@@ -342,7 +342,7 @@ async def del_lockables(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     for lockable, filter in LOCK_TYPES.items():
         if lockable == "rtl":
-            if sql.is_locked(chat.id, lockable) and can_delete(chat, context.bot.id):
+            if sql.is_locked(chat.id, lockable) and await can_delete(chat, context.bot.id, context):
                 if message.caption:
                     check = ad.detect_alphabet(u"{}".format(message.caption))
                     if "ARABIC" in check:
@@ -365,7 +365,7 @@ async def del_lockables(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if lockable == "button":
             if (
                     sql.is_locked(chat.id, lockable)
-                    and can_delete(chat, context.bot.id)
+                    and await can_delete(chat, context.bot.id, context)
                     and message.reply_markup
                     and message.reply_markup.inline_keyboard
             ):
@@ -379,7 +379,7 @@ async def del_lockables(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if lockable == "inline":
             if (
                     sql.is_locked(chat.id, lockable)
-                    and can_delete(chat, context.bot.id)
+                    and await can_delete(chat, context.bot.id, context)
                     and message
                     and message.via_bot
             ):
@@ -393,7 +393,7 @@ async def del_lockables(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if (
                 filter(update)
                 and sql.is_locked(chat.id, lockable)
-                and can_delete(chat, context.bot.id)
+                and await can_delete(chat, context.bot.id, context)
         ):
             if lockable == "bots":
                 new_members = update.effective_message.new_chat_members
@@ -475,7 +475,7 @@ async def list_locks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
 
-    conn = connected(context.bot, update, chat, user.id, need_admin=True)
+    conn = await connected(context.bot, update, chat, user.id, need_admin=True)
     if conn:
         chat = await context.bot.get_chat(conn)
         chat_name = chat.title

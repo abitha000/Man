@@ -6,7 +6,7 @@ import tg_bot.modules.sql.users_sql as user_sql
 from tg_bot import DEV_USERS, OWNER_ID
 from tg_bot.modules.helper_funcs.chat_status import dev_plus
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.error import BadRequest, Unauthorized
+from telegram.error import BadRequest, Forbidden
 from telegram.ext import ContextTypes, CallbackQueryHandler, CommandHandler
 from tg_bot.modules.helper_funcs.decorators import kigyo_handler
 
@@ -38,7 +38,7 @@ async def get_invalid_chats(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         await asyncio.sleep(0.1)
         try:
             await bot.get_chat(cid, timeout=60)
-        except (BadRequest, Unauthorized):
+        except (BadRequest, Forbidden):
             kicked_chats += 1
             chat_list.append(cid)
         except Exception:

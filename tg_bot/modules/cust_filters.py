@@ -57,7 +57,7 @@ async def list_handlers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
 
-    conn = connected(context.bot, update, chat, user.id, need_admin=False)
+    conn = await connected(context.bot, update, chat, user.id, need_admin=False)
     if conn is not False:
         chat_id = conn
         chat_name = (await context.bot.get_chat(conn)).title
@@ -110,7 +110,7 @@ async def cust_filters(update: Update, context: ContextTypes.DEFAULT_TYPE):
         None, 1
     )
 
-    conn = connected(context.bot, update, chat, user.id)
+    conn = await connected(context.bot, update, chat, user.id)
     if conn is not False:
         chat_id = conn
         chat_name = (await context.bot.get_chat(conn)).title
@@ -226,7 +226,7 @@ async def stop_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     args = update.effective_message.text.split(None, 1)
 
-    conn = connected(context.bot, update, chat, user.id)
+    conn = await connected(context.bot, update, chat, user.id)
     if conn is not False:
         chat_id = conn
         chat_name = (await context.bot.get_chat(conn)).title

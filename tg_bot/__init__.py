@@ -145,6 +145,11 @@ REDIS_PORT = KInit.REDIS_PORT
 REDIS_PASSWORD = KInit.REDIS_PASSWORD
 REDIS_DB = KInit.REDIS_DB
 
+log.info(
+    f"Redis config: host={REDIS_HOST}, port={REDIS_PORT}, "
+    f"db={REDIS_DB}, password_set={bool(REDIS_PASSWORD)}"
+)
+
 
 # Configure Redis connection
 redis_conn = Redis(

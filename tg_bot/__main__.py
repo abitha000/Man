@@ -8,6 +8,8 @@ import importlib
 import logging
 import re
 import threading
+import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from sys import argv
 from typing import Optional
 
@@ -50,6 +52,25 @@ from tg_bot.modules.helper_funcs.decorators import (
 )
 from tg_bot.modules.helper_funcs.misc import paginate_modules
 from tg_bot.modules.language import gs
+
+# Koyeb health server
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        pass
+
+
+def start_health_server():
+    port = int(os.environ.get("PORT", 8000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    server.serve_forever()
+
+
+threading.Thread(target=start_health_server, daemon=True).start()
 
 IMPORTED = {}
 MIGRATEABLE = []

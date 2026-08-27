@@ -29,4 +29,4 @@ base58
 pytimeparse
 SibylSystem
 pydantic
-redis
+redis==7.1.0

@@ -11,6 +11,7 @@ import threading
 from sys import argv
 from typing import Optional
 
+from telegram import InputMediaPhoto
 from telegram import Update, ParseMode, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.error import (
     TelegramError,
@@ -147,50 +148,68 @@ def start(update: Update, context: CallbackContext):  # sourcery no-metrics
 
     if hasattr(update, "callback_query"):
         query = update.callback_query
+
         if hasattr(query, "id"):
             first_name = update.effective_user.first_name
-            update.effective_message.edit_text(
-                text=gs(chat.id, "pm_start_text").format(
-                    escape_markdown(first_name),
-                    escape_markdown(context.bot.first_name),
-                    OWNER_ID,
-                ),
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=InlineKeyboardMarkup(
-                    [
+
+            with open("assets/start.jpg", "rb") as photo:
+                update.effective_message.edit_media(
+                    media=InputMediaPhoto(
+                        media=photo,
+                        caption=gs(chat.id, "pm_start_text").format(
+                            escape_markdown(first_name),
+                            escape_markdown(context.bot.first_name),
+                            OWNER_ID,
+                        ),
+                        parse_mode=ParseMode.MARKDOWN,
+                    ),
+                    reply_markup=InlineKeyboardMarkup(
                         [
-                            InlineKeyboardButton(
-                                text=gs(chat.id, "support_chat_link_btn"),
-                                url="https://t.me/YorktownEagleUnion",
-                            ),
-                            InlineKeyboardButton(
-                                text=gs(chat.id, "updates_channel_link_btn"),
-                                url="https://t.me/KigyoUpdates",
-                            ),
-                            InlineKeyboardButton(
-                                text=gs(chat.id, "src_btn"),
-                                url="https://github.com/AnimeKaizoku/EnterpriseALRobot/",
-                            ),
-                        ],
-                        [
-                            InlineKeyboardButton(
-                                text="Try inline",
-                                switch_inline_query_current_chat="",
-                            ),
-                            InlineKeyboardButton(
-                                text="Help",
-                                callback_data="help_back",
-                            ),
-                            InlineKeyboardButton(
-                                text=gs(chat.id, "add_bot_to_group_btn"),
-                                url="t.me/{}?startgroup=true".format(
-                                    context.bot.username
+                            [
+                                InlineKeyboardButton(
+                                    text=gs(
+                                        chat.id,
+                                        "support_chat_link_btn",
+                                    ),
+                                    url="https://t.me/YorktownEagleUnion",
                                 ),
-                            ),
-                        ],
-                    ]
-                ),
-            )
+                                InlineKeyboardButton(
+                                    text=gs(
+                                        chat.id,
+                                        "updates_channel_link_btn",
+                                    ),
+                                    url="https://t.me/KigyoUpdates",
+                                ),
+                                InlineKeyboardButton(
+                                    text=gs(
+                                        chat.id,
+                                        "src_btn",
+                                    ),
+                                    url="https://github.com/AnimeKaizoku/EnterpriseALRobot/",
+                                ),
+                            ],
+                            [
+                                InlineKeyboardButton(
+                                    text="Try inline",
+                                    switch_inline_query_current_chat="",
+                                ),
+                                InlineKeyboardButton(
+                                    text="Help",
+                                    callback_data="help_back",
+                                ),
+                                InlineKeyboardButton(
+                                    text=gs(
+                                        chat.id,
+                                        "add_bot_to_group_btn",
+                                    ),
+                                    url="t.me/{}?startgroup=true".format(
+                                        context.bot.username
+                                    ),
+                                ),
+                            ],
+                        ]
+                    ),
+                )
 
             context.bot.answer_callback_query(query.id)
             return

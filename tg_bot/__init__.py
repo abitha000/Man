@@ -148,7 +148,7 @@ REDIS_DB = KInit.REDIS_DB
 
 # Configure Redis connection
 redis_conn = Redis(
-    host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD, db=REDIS_DB, ssl=True
+    host=REDIS_HOST, port=REDIS_PORT, username="default", password=REDIS_PASSWORD, db=REDIS_DB, ssl=True
 )
 
 # Test Redis connection

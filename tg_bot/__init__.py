@@ -102,6 +102,7 @@ class KigyoINIT:
         self.REDIS_HOST: str = self.parser.get("REDIS_HOST", "localhost")
         self.REDIS_PORT: int = self.parser.getint("REDIS_PORT", 6379)
         self.REDIS_DB: int = self.parser.getint("REDIS_DB", 0)
+        self.REDIS_USERNAME: str = self.parser.get("REDIS_USERNAME", None)
         self.REDIS_PASSWORD: str = self.parser.get("REDIS_PASSWORD", None)
 
 
@@ -142,6 +143,7 @@ CF_API_KEY = KInit.CF_API_KEY
 POSTGRES_POOL_SIZE = KInit.POSTGRES_POOL_SIZE
 REDIS_HOST = KInit.REDIS_HOST
 REDIS_PORT = KInit.REDIS_PORT
+REDIS_USERNAME = KInit.REDIS_USERNAME
 REDIS_PASSWORD = KInit.REDIS_PASSWORD
 REDIS_DB = KInit.REDIS_DB
 
@@ -153,7 +155,7 @@ log.info(
 
 # Configure Redis connection
 redis_conn = Redis(
-    host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD, db=REDIS_DB, ssl=True
+    host=REDIS_HOST, port=REDIS_PORT, username=REDIS_USERNAME, password=REDIS_PASSWORD, db=REDIS_DB, ssl=True
 )
 
 # Test Redis connection
